@@ -1,0 +1,33 @@
+{
+  "name": "splot-website",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "check": "astro check",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "build": "astro build",
+    "preview": "wrangler dev",
+    "test": "npm run build && playwright test",
+    "deploy:preview": "wrangler preview",
+    "deploy:production": "wrangler deploy"
+  },
+  "dependencies": {
+    "astro": "7.4.13"
+  },
+  "devDependencies": {
+    "@astrojs/check": "0.9.12",
+    "@axe-core/playwright": "4.14.0",
+    "@playwright/test": "1.65.1",
+    "prettier": "3.10.1",
+    "prettier-plugin-astro": "1.1.2",
+    "typescript": "6.0.3",
+    "wrangler": "4.165.0"
+  },
+  "description": "The splot website: a static landing page for the splot AV2 toolkit.",
+  "license": "SEE LICENSE IN LICENSE.md",
+  "engines": {
+    "node": ">=22.23.4"
+  }
+}

@@ -1,0 +1,41 @@
+---
+interface Props {
+  title: string;
+  label: string;
+  steps: { name?: string; note?: string; cmd: string }[];
+}
+const { title, label, steps } = Astro.props;
+const labelled = steps.some((s) => s.name);
+---
+
+<div class="panel">
+  <div class="panel-head">
+    <span>{title}</span>
+    <button
+      type="button"
+      data-copy={steps.map((s) => s.cmd).join("\n")}
+      aria-label={`Copy all ${label} commands`}
+    >
+      Copy all
+    </button>
+  </div>
+  <ol class:list={["steps", { plain: !labelled }]}>
+    {steps.map((s, i) => (
+      <li>
+        {s.name && (
+          <span class="step">
+            <b>{s.name}</b> {s.note}
+          </span>
+        )}
+        <code>{s.cmd}</code>
+        <button
+          type="button"
+          data-copy={s.cmd}
+          aria-label={`Copy the ${s.name ? s.name.toLowerCase() : `step ${i + 1}`} command`}
+        >
+          Copy
+        </button>
+      </li>
+    ))}
+  </ol>
+</div>

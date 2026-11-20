@@ -1,0 +1,176 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import Command from "../components/Command.astro";
+import CommandPanel from "../components/CommandPanel.astro";
+import { cApi, encodeOptions, install, links, repo, workflow } from "../data/site";
+
+const description =
+  "splot is an encoder, a decoder and a validator for AV2, the next-generation video codec. One binary, written in safe Rust. Pre-alpha and source-available.";
+---
+
+<BaseLayout title="splot — the complete AV2 toolkit" description={description}>
+  <section class="hero">
+    <p class="pill">
+      <span class="dot"></span>Pre-alpha · AV2 spec v1.0.0
+    </p>
+    <p class="wordmark">splot</p>
+    <h1>AV2. Encode it. Decode it. Trust it.</h1>
+    <p class="lead">
+      An encoder, a decoder and a validator for the next-generation video codec. One binary. Safe
+      Rust. Built from the spec.
+    </p>
+    <p class="actions">
+      <a class="btn" href="#install">
+        Install from source
+      </a>
+      <a class="btn btn-quiet" href={repo}>
+        View source
+      </a>
+    </p>
+  </section>
+
+  <section class="section" id="workflow" aria-labelledby="workflow-h">
+    <h2 id="workflow-h">
+      Three commands. <span>Your first AV2 video.</span>
+    </h2>
+    <CommandPanel title="Terminal" label="workflow" steps={workflow} />
+    <p class="after">
+      That is the whole loop: from raw video to a conformant AV2 stream and back to your screen.
+    </p>
+  </section>
+
+  <section class="section" id="capabilities" aria-labelledby="capabilities-h">
+    <h2 id="capabilities-h">
+      Encode. Decode. Validate. <span>One binary.</span>
+    </h2>
+    <div class="grid">
+      <article class="card wide">
+        <div>
+          <p class="eyebrow c1">Encode</p>
+          <h3>Encode. Beautifully.</h3>
+          <p>
+            Give it a Y4M file, or <code>-</code> for standard input. Get an AV2 IVF file. 8-bit and
+            10-bit input, 4:2:0, 4:2:2, 4:4:4 and monochrome. The encoder reads the format from the
+            Y4M header.
+          </p>
+          <Command
+            cmd="ffmpeg -i camera.mov -f yuv4mpegpipe - | splot encode - --crf 28 -o camera.ivf"
+            label="piped encode command"
+          />
+        </div>
+        <dl class="opts">
+          {encodeOptions.map((o) => (
+            <div>
+              <dt>{o.want}</dt>
+              <dd>
+                <code>{o.use}</code>
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </article>
+
+      <article class="card">
+        <p class="eyebrow c3">Decode</p>
+        <h3>Decode. Every frame.</h3>
+        <p>
+          Decode to Y4M on standard output and pipe it into any player that reads Y4M. No temporary
+          files. The decoder uses every core by default. It reads IVF files and raw Annex B streams.
+        </p>
+        <Command cmd="splot decode -o - movie.ivf | mpv -" label="watch command" />
+        <Command cmd="splot decode movie.ivf -o movie.y4m" label="decode to file command" />
+      </article>
+
+      <article class="card">
+        <p class="eyebrow c2">Validate</p>
+        <h3>Validate. With proof.</h3>
+        <p>
+          Find out if a stream is correct, and if not, exactly where and why. Each finding has a
+          stable rule id, a severity, the AV2 spec section and a byte offset. Exit codes are stable
+          too.
+        </p>
+        <Command cmd="splot validate movie.ivf --json" label="JSON report command" />
+        <Command cmd="splot explain obu-header/global-xlayer-required" label="explain command" />
+      </article>
+
+      <article class="card wide">
+        <div>
+          <p class="eyebrow">Embed</p>
+          <h3>Embed. In a few lines.</h3>
+          <p>
+            Use the Rust crates <code>splot_encode</code> and <code>splot_decode</code> to encode
+            frames and decode them back. The decoder also has a stable C ABI with zero-copy
+            pictures.
+          </p>
+          <p>
+            <a class="more" href={links.embed}>
+              Read the Rust and C examples
+            </a>
+          </p>
+        </div>
+        <div>
+          <ul class="chips" aria-label="C API functions">
+            {cApi.map((f) => (
+              <li>
+                <code>{f}</code>
+              </li>
+            ))}
+          </ul>
+          <Command cmd="cargo build --release -p splot-capi" label="C API build command" />
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <section class="section" id="install" aria-labelledby="install-h">
+    <h2 id="install-h">
+      Install. <span>From source.</span>
+    </h2>
+    <p class="intro">
+      You need <a href={links.rustup}>rustup</a>. The repository pins its Rust toolchain, and rustup
+      installs it for you.
+    </p>
+    <CommandPanel title="Terminal" label="install" steps={install} />
+    <p class="after">
+      Release builds use AVX2 on x86. On a CPU older than Intel Haswell (2013) or AMD Excavator
+      (2015), build with <code>RUSTFLAGS="-C target-cpu=x86-64"</code>. Apple Silicon and ARM need
+      nothing extra.
+    </p>
+  </section>
+
+  <section class="section" id="status" aria-labelledby="status-h">
+    <h2 id="status-h">Where it stands.</h2>
+    <div class="grid">
+      <article class="card">
+        <p class="eyebrow c3">Status</p>
+        <h3>Pre-alpha. It moves fast.</h3>
+        <p>
+          The project reports that the encoder, decoder and validator work end to end today, and
+          that their output is checked against the AV2 reference decoder (AVM). Expect sharp edges,
+          and please report them.
+        </p>
+        <p>
+          <a class="more" href={links.issues}>
+            Report a problem
+          </a>
+        </p>
+      </article>
+      <article class="card">
+        <p class="eyebrow c1">License</p>
+        <h3>Source-available.</h3>
+        <p>
+          PolyForm Noncommercial 1.0.0. Free for noncommercial use under its terms. Commercial use
+          requires a separate written license from Bartosz Tomczyk.
+        </p>
+        <p>
+          <a class="more" href={links.license}>
+            Read the product license
+          </a>
+          <a class="more" href={links.licensing}>
+            Commercial licensing
+          </a>
+        </p>
+      </article>
+    </div>
+  </section>
+</BaseLayout>

@@ -1,0 +1,107 @@
+---
+import "../styles/global.css";
+import { links, nav, repo, websiteRepo } from "../data/site";
+
+interface Props {
+  title: string;
+  description: string;
+  noindex?: boolean;
+}
+const { title, description, noindex = false } = Astro.props;
+const canonical = new URL(Astro.url.pathname, Astro.site);
+const image = new URL("/og.png", Astro.site);
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#05050a" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    {noindex ? (
+      <meta name="robots" content="noindex" />
+    ) : (
+      <>
+        <link rel="canonical" href={canonical} />
+        <meta property="og:url" content={canonical} />
+      </>
+    )}
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="splot" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={image} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="splot. AV2. Encode it. Decode it. Trust it." />
+    <meta name="twitter:card" content="summary_large_image" />
+  </head>
+  <body>
+    <a class="skip" href="#main">
+      Skip to content
+    </a>
+    <div class="glow" aria-hidden="true">
+      <i></i>
+      <i></i>
+      <i></i>
+    </div>
+
+    <header class="bar">
+      <a class="brand" href="/" aria-label="splot home">
+        splot
+      </a>
+      <nav class="bar-links" aria-label="Primary">
+        {nav.map((l) => (
+          <a href={l.href}>{l.label}</a>
+        ))}
+      </nav>
+      <a class="btn btn-quiet btn-small" href={repo}>
+        View source
+      </a>
+      <details class="menu">
+        <summary aria-label="Menu">
+          <span></span>
+        </summary>
+        <nav aria-label="Primary, compact">
+          {nav.map((l) => (
+            <a href={l.href}>{l.label}</a>
+          ))}
+        </nav>
+      </details>
+    </header>
+
+    <main id="main">
+      <slot />
+    </main>
+
+    <footer class="footer">
+      <div>
+        <a class="brand" href="/" aria-label="splot home">
+          splot
+        </a>
+        <p>
+          Source-available under PolyForm Noncommercial 1.0.0.
+          <br />
+          Copyright © 2026 Bartosz Tomczyk.
+        </p>
+      </div>
+      <nav aria-label="Footer">
+        <a href={repo}>Product source</a>
+        <a href={links.developers}>Developer guide</a>
+        <a href={links.license}>Product license</a>
+        <a href={links.spec}>AV2 specification</a>
+        <a href={websiteRepo}>Website source</a>
+        <a href={links.websiteLicense}>Website license</a>
+      </nav>
+    </footer>
+
+    <p class="sr-only" role="status" id="copy-status"></p>
+    <script>
+      import "../scripts/enhance";
+    </script>
+  </body>
+</html>
