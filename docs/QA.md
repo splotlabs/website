@@ -51,22 +51,30 @@ These are local scores. Scores on the deployed site can be different.
 | CSS                    | 3.1 kB                         |
 | `index.html`           | 3.1 kB                         |
 
-## Expected failures before publication
+## After publication (2026-11-20)
 
-- `https://github.com/splotlabs/website/blob/main/LICENSE.md` returns 404 until the source is
-  pushed.
-- `https://splotlabs.io/` does not respond until the domain is attached.
+| Check                                                                                         | Result |
+| --------------------------------------------------------------------------------------------- | ------ |
+| CI on GitHub Actions: Node.js 24.22.1, Playwright Chromium, all checks and 18 tests           | Passed |
+| Worker Preview: HTML identical to the local build, headers, real 404, `X-Robots-Tag: noindex` | Passed |
+| `https://splotlabs.io/`: HTTP 200, valid certificate for `splotlabs.io`                       | Passed |
+| `https://splotlabs.io/`: HTML identical to the local build                                    | Passed |
+| `https://splotlabs.io/`: security headers present, no `X-Robots-Tag`                          | Passed |
+| `https://splotlabs.io/no-such-page`: HTTP 404                                                 | Passed |
+| Hashed assets: one-year immutable cache. HTML: must revalidate.                               | Passed |
+| `robots.txt`, `sitemap.xml`, `favicon.svg`, `og.png`: HTTP 200                                | Passed |
+
+These production checks used `curl` against a Cloudflare edge address, because the local DNS
+resolver still had a cached negative answer for the new record.
 
 ## Not run
 
-- Tests on Node.js 24.22.1, the version in `.nvmrc` and in the Workers Builds image. The local
-  machine has 26.13.1.
-- The CI workflow. It runs after the first push.
+- A real browser session on `https://splotlabs.io/` (desktop and phone), and the copy buttons
+  and menu on the deployed site.
+- Lighthouse on the deployed site.
 - Firefox, Safari, and real phones. All browser tests used Chrome.
 - A screen reader session. The accessibility result is from automated rules and a manual check
   of headings, landmarks, focus and contrast. It is not a formal WCAG 2.2 AA claim.
-- The `X-Robots-Tag: noindex` rule for `workers.dev` hosts. It can only be verified on a deployed
-  Worker.
 - The product commands on the page. They are copied from the splot README and were not executed.
 - The Impeccable launcher binary. The review used its audit checklist by hand (accessibility,
   performance, theming, responsive behavior).
