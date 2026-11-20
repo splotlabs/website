@@ -5,17 +5,18 @@ Cloudflare Pages project.
 
 ## Current state (2026-11-20)
 
-| Item                             | Value                                                                          |
-| -------------------------------- | ------------------------------------------------------------------------------ |
-| Worker                           | `splot-website`                                                                |
-| Production origin                | `https://splotlabs.io` (Workers Custom Domain, apex only)                      |
-| First production version         | `6c02dd86-353c-4e08-acdc-48e4aad7b276`, from commit `cf64d59`                  |
-| Content reference                | `splotlabs/splot` at `e299bc3d85a5b2fbcf2b2a6162a4ee127986ab92`                |
-| `workers.dev` production address | Disabled (Wrangler default when a route is configured)                         |
-| `workers.dev` Preview URLs       | Disabled (Wrangler default when `workers.dev` is disabled)                     |
-| Workers Builds (Git integration) | Not connected. Deployments are manual.                                         |
-| Zone setting "Always Use HTTPS"  | On since 2026-11-20. It was off before. HTTP requests get a redirect to HTTPS. |
-| `www.splotlabs.io`               | No record and no redirect                                                      |
+| Item                             | Value                                                                                                           |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Worker                           | `splot-website`                                                                                                 |
+| Production origin                | `https://splotlabs.io` (Workers Custom Domain, apex only)                                                       |
+| First production version         | `6c02dd86-353c-4e08-acdc-48e4aad7b276`, from commit `cf64d59`                                                   |
+| Content reference                | `splotlabs/splot` at `e299bc3d85a5b2fbcf2b2a6162a4ee127986ab92`                                                 |
+| `workers.dev` production address | Disabled (`"workers_dev": false`)                                                                               |
+| `workers.dev` Preview URLs       | Enabled (`"preview_urls": true`). Cloudflare adds `noindex` to them.                                            |
+| Workers Builds (Git integration) | Connected to `splotlabs/website`. A merge to `main` deploys to production. Other branches get a Worker Preview. |
+| Branch rules                     | `main` accepts changes through pull requests only. The CI job `check` must pass. No force push.                 |
+| Zone setting "Always Use HTTPS"  | On since 2026-11-20. It was off before. HTTP requests get a redirect to HTTPS.                                  |
+| `www.splotlabs.io`               | No record and no redirect                                                                                       |
 
 Configuration is in `wrangler.jsonc`: the asset directory `./dist`, `not_found_handling:
 "404-page"`, the `splotlabs.io` Custom Domain, and an empty `previews` block. Response headers
@@ -25,30 +26,29 @@ Cloudflare created one DNS record for the Custom Domain: a proxied record for `s
 that points to the Worker. Cloudflare manages this record and the certificate. Do not edit the
 record by hand.
 
-## Deploy by hand
+## Deploy
+
+Deployment is automatic:
+
+1. Push a branch to `splotlabs/website`. Workers Builds makes a Worker Preview of the branch.
+   The Preview URL is public. Workers Builds does not build branches of forks.
+2. Open a pull request. GitHub Actions runs the job `check`.
+3. Merge the pull request after `check` passes. Workers Builds then runs the build command and
+   `npx wrangler deploy`. The new version is live at `https://splotlabs.io` when the build ends.
+
+A direct push to `main` is refused by the repository ruleset.
+
+### Deploy by hand (emergency only)
 
 You must be signed in (`npx wrangler login`) to the Cloudflare account that owns the
-`splotlabs.io` zone. Use the project Wrangler, not a global installation.
+`splotlabs.io` zone. Use the project Wrangler, not a global installation. Deploy only a commit
+that is on `main`, or the next automatic build will replace your version.
 
 ```bash
 npm ci
 npm run check && npm run format:check && npm test
 npm run deploy:production
 ```
-
-`npm run deploy:production` runs `wrangler deploy`. It uploads `dist/` and makes the new version
-live at `https://splotlabs.io` immediately.
-
-To make a Worker Preview of a branch:
-
-```bash
-npm run build
-npm run deploy:preview
-```
-
-`wrangler preview` uses the Git branch name as the Preview name. A Preview URL is public. A
-Preview URL operates only when Preview URLs are enabled for the Worker (`"preview_urls": true`
-in `wrangler.jsonc`, then a production deployment).
 
 ## Verify a deployment
 
@@ -62,27 +62,24 @@ Then open the page on a desktop and on a phone. Check the copy buttons and the m
 HTML is served with `Cache-Control: public, max-age=0, must-revalidate`. Files in `/_astro/`
 have hashed names and a one-year immutable cache.
 
-## Routine workflow
+## Workers Builds settings
 
 ```text
-local change → checks → branch and pull request → CI → review → merge to main
-→ deploy → verify at splotlabs.io
+local change → branch → Worker Preview → pull request → CI → merge to main
+→ Workers Builds → production at splotlabs.io
 ```
 
-When Workers Builds is connected, a push to a branch makes a Worker Preview, and a merge to
-`main` deploys to production. Proposed Workers Builds settings:
-
-| Setting           | Value                                                    |
-| ----------------- | -------------------------------------------------------- |
-| Repository        | `splotlabs/website`                                      |
-| Production branch | `main`                                                   |
-| Root directory    | repository root                                          |
-| Build command     | `npm run check && npm run format:check && npm run build` |
-| Deploy command    | `npx wrangler deploy`                                    |
-| Preview command   | `npx wrangler preview`                                   |
+| Setting        | Production trigger                                       | Preview trigger            |
+| -------------- | -------------------------------------------------------- | -------------------------- |
+| Repository     | `splotlabs/website`                                      | `splotlabs/website`        |
+| Branches       | `main`                                                   | all branches except `main` |
+| Root directory | `/`                                                      | `/`                        |
+| Build command  | `npm run check && npm run format:check && npm run build` | the same                   |
+| Deploy command | `npx wrangler deploy`                                    | `npx wrangler preview`     |
 
 GitHub Actions runs checks only. It does not deploy. A passed GitHub check does not make
-Workers Builds wait, so the build command above contains the checks.
+Workers Builds wait, so the build command contains the checks. The browser tests run only in
+GitHub Actions, and the ruleset makes them a condition of the merge.
 
 ## Roll back the content
 
