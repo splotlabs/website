@@ -5,16 +5,17 @@ Cloudflare Pages project.
 
 ## Current state (2026-11-20)
 
-| Item                             | Value                                                           |
-| -------------------------------- | --------------------------------------------------------------- |
-| Worker                           | `splot-website`                                                 |
-| Production origin                | `https://splotlabs.io` (Workers Custom Domain, apex only)       |
-| First production version         | `6c02dd86-353c-4e08-acdc-48e4aad7b276`, from commit `cf64d59`   |
-| Content reference                | `splotlabs/splot` at `e299bc3d85a5b2fbcf2b2a6162a4ee127986ab92` |
-| `workers.dev` production address | Disabled (Wrangler default when a route is configured)          |
-| `workers.dev` Preview URLs       | Disabled (Wrangler default when `workers.dev` is disabled)      |
-| Workers Builds (Git integration) | Not connected. Deployments are manual.                          |
-| `www.splotlabs.io`               | No record and no redirect                                       |
+| Item                             | Value                                                                          |
+| -------------------------------- | ------------------------------------------------------------------------------ |
+| Worker                           | `splot-website`                                                                |
+| Production origin                | `https://splotlabs.io` (Workers Custom Domain, apex only)                      |
+| First production version         | `6c02dd86-353c-4e08-acdc-48e4aad7b276`, from commit `cf64d59`                  |
+| Content reference                | `splotlabs/splot` at `e299bc3d85a5b2fbcf2b2a6162a4ee127986ab92`                |
+| `workers.dev` production address | Disabled (Wrangler default when a route is configured)                         |
+| `workers.dev` Preview URLs       | Disabled (Wrangler default when `workers.dev` is disabled)                     |
+| Workers Builds (Git integration) | Not connected. Deployments are manual.                                         |
+| Zone setting "Always Use HTTPS"  | On since 2026-11-20. It was off before. HTTP requests get a redirect to HTTPS. |
+| `www.splotlabs.io`               | No record and no redirect                                                      |
 
 Configuration is in `wrangler.jsonc`: the asset directory `./dist`, `not_found_handling:
 "404-page"`, the `splotlabs.io` Custom Domain, and an empty `previews` block. Response headers
@@ -107,3 +108,6 @@ A content rollback does not change DNS or the Custom Domain. To detach the domai
    `splotlabs.io` Custom Domain. This also removes the DNS record that Cloudflare created.
 
 Before the launch, the zone had no DNS records, so there is nothing to restore.
+
+The zone setting "Always Use HTTPS" is independent of the Worker. To reverse it, set it to off
+in the dashboard: **SSL/TLS**, then **Edge Certificates**.
