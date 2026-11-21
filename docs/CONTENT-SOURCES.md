@@ -2,7 +2,7 @@
 
 All product claims and commands on the website come from the product repository
 [splotlabs/splot](https://github.com/splotlabs/splot) at commit
-`e299bc3d85a5b2fbcf2b2a6162a4ee127986ab92` (2026-11-20).
+`ddb00d2ee28d646f060ea19fa5c7c30aea5b082b` (2026-11-21).
 
 The website does not fetch upstream content at build time or at runtime. When the
 README changes, update the copy by hand and update the commit above.

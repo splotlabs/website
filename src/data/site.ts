@@ -35,7 +35,7 @@ export const install = [
 ];
 
 export const encodeOptions = [
-  { want: "Constant quality", use: "--crf 30" },
+  { want: "Constant quality", use: "--crf 20" },
   { want: "A target bitrate", use: "--bitrate 2000" },
   { want: "More speed", use: "--preset 10" },
   { want: "Low latency", use: "--low-delay" },
