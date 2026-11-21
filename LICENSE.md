@@ -1,4 +1,14 @@
-Required Notice: Copyright © 2026 Bartosz Tomczyk. Commercial use of the splot website source requires a separate written commercial license from Bartosz Tomczyk.
+# splot website — license scope and notices
+
+First-party material in this repository is offered by **Bartosz Tomczyk**, a natural person using **SplotLabs** and **splot** as project names. These names do not identify a separate company.
+
+Required Notice: Copyright (c) 2026 Bartosz Tomczyk.
+
+This notice identifies Bartosz Tomczyk's original material: the website source, copy and brand assets. Contributions and third-party material keep their own ownership, notices and license terms. The npm dependencies are not covered by this license.
+
+The standard PolyForm Noncommercial License 1.0.0 below governs the permissions it grants. For uses outside those permissions, contact **bartekplus@gmail.com** about an alternative commercial license. This scope notice does not narrow the permissions granted by the standard license. An alternative agreement applies only to rights Bartosz Tomczyk is authorized to grant.
+
+---
 
 # PolyForm Noncommercial License 1.0.0
 
