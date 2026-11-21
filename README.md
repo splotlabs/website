@@ -40,8 +40,10 @@ The social image `public/og.png` is a 1200 × 630 render of `src/brand/og.svg`.
 
 ## License
 
-[PolyForm Noncommercial 1.0.0](./LICENSE.md). Copyright © 2026 Bartosz Tomczyk. Commercial use
-requires a separate written license.
+[PolyForm Noncommercial 1.0.0](./LICENSE.md). Copyright © 2026 Bartosz Tomczyk. Uses outside
+that license, which includes typical commercial deployments, need a separate written license
+from him (bartekplus@gmail.com). SplotLabs and splot are project names he uses, not a separate
+company.
 
 The brand assets (`public/favicon.svg`, `public/og.png`, `src/brand/og.svg`) are adapted from
 `docs/assets/hero.svg` in the splot repository, by the same copyright holder, under the same
@@ -50,3 +52,11 @@ part of the published site, except for the small Astro runtime output in the bui
 JavaScript.
 
 splot is source-available. It is not open source.
+
+## Contributing
+
+Read the [contribution policy](https://github.com/splotlabs/.github/blob/main/CONTRIBUTING.md)
+first. Contributions are accepted under a non-exclusive
+[Contributor License Agreement](https://github.com/splotlabs/.github/blob/main/CLA.md) with
+Bartosz Tomczyk. You keep your copyright. He receives the right to license your contribution
+under alternative commercial terms and future public licenses.
