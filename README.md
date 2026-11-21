@@ -40,8 +40,10 @@ The social image `public/og.png` is a 1200 × 630 render of `src/brand/og.svg`.
 
 ## License
 
-[PolyForm Noncommercial 1.0.0](./LICENSE.md). Copyright © 2026 Bartosz Tomczyk. Commercial use
-requires a separate written license.
+[PolyForm Noncommercial 1.0.0](./LICENSE.md). Copyright © 2026 Bartosz Tomczyk. Uses outside
+that license, which includes typical commercial deployments, need a separate written license
+from him (bartekplus@gmail.com). SplotLabs and splot are project names he uses, not a separate
+company.
 
 The brand assets (`public/favicon.svg`, `public/og.png`, `src/brand/og.svg`) are adapted from
 `docs/assets/hero.svg` in the splot repository, by the same copyright holder, under the same
@@ -50,3 +52,16 @@ part of the published site, except for the small Astro runtime output in the bui
 JavaScript.
 
 splot is source-available. It is not open source.
+
+## Contributing
+
+Read the [contribution policy](https://github.com/splotlabs/.github/blob/main/CONTRIBUTING.md)
+first. Other people's contributions are licensed by their authors under the unmodified MIT No
+Attribution License (MIT-0), through the
+[SplotLabs Contribution Terms](https://github.com/splotlabs/.github/blob/main/CLA.md). You keep
+your copyright. MIT-0 lets everyone who receives your contribution reuse it, including
+commercially. It covers only your own original material. The rest of the website, including the
+file you edit, keeps its license.
+
+A contribution is merged only after each rights holder's acceptance of the approved terms is
+recorded. This link, a ticked box in a pull request and a green CI run are not that acceptance.

@@ -30,7 +30,7 @@ Status values:
 | Embed text, crate names, the five C functions, `cargo build --release -p splot-capi`                                     | `README.md`, "Embed. In a few lines."                       | Documented                                                      |
 | Install commands, rustup, the AVX2 note                                                                                  | `README.md`, "Install. From source."                        | Documented                                                      |
 | "The project reports that the encoder, decoder and validator work end to end…"                                           | `README.md`, "Where it stands."                             | Documented. The website states it as a report from the project. |
-| "Commercial use requires a separate written license from Bartosz Tomczyk."                                               | `README.md`, "License."; `LICENSE.md`, required notice      | Documented                                                      |
+| "Uses outside its permissions, including typical commercial deployments, require a separate agreement…"                  | `LICENSE.md`, license body; `README.md`, "License."         | Documented. README wording as revised in splot PR 1791          |
 | `public/favicon.svg`, `src/brand/og.svg`, `public/og.png`                                                                | Adapted from `docs/assets/hero.svg`                         | Checked against the SVG markup                                  |
 
 The website does not show the licensing email address. It links to the license section of the
