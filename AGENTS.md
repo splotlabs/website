@@ -61,8 +61,32 @@ A skill must not replace the brand palette, add a framework, or force full-heigh
 
 Get the owner's approval for each of these actions, each time:
 
-- A push to the remote repository, or a change of its settings.
-- A Worker Preview or a production deployment.
+- A change of the settings of the remote repository.
+- A manual `npm run deploy:preview` or `npm run deploy:production`.
 - A Custom Domain, a route, or a DNS change for `splotlabs.io`.
 
+A branch push publishes a public Worker Preview, and a merge into `main` deploys production.
+Autonomous mode covers both.
+
 Do not put account identifiers, dashboard addresses, tokens, or private notes in this repository.
+
+## Autonomous work
+
+The owner turns autonomous mode on in the task ("autonomous", "take it to merge") or by handing
+over a GitHub issue. Without it, a commit, push, PR or merge needs the task to name it.
+
+In autonomous mode, do the whole path without asking or reporting progress: branch, implement,
+commit, run the checks and a code review, push, open the PR (linked to its issue, if any), address
+every review comment (fix it, or reply with the reason it stays), and merge when CI is green.
+Diagnose failing checks and conflicts, and continue.
+
+Stop only for a decision that is the owner's:
+
+- The requirement is unclear.
+- The best solution is a larger restructure than the task implies, or several sound designs exist.
+- A gate above applies, or the change touches a final decision.
+- The action is destructive or cannot be undone.
+
+Ask once, with the options, their pros, cons and effort, and a recommendation. Continue the work
+that does not depend on the answer. Never reach the merge with a hack, workaround, weakened check,
+skipped test or dismissed comment.
