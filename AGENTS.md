@@ -49,7 +49,13 @@ Do not ask the owner to make these decisions again.
 - Keep the pre-alpha status visible.
 - Do not add benchmarks, users, testimonials, release dates, binary downloads, or simulated
   tool output.
-- Do not treat the splot repository as writable. It is a read-only reference.
+- Treat splot as a read-only reference during website work.
+- If an example misstates a command, correct the example and its source attribution here.
+- If the documented command fails in splot, report the defect in splot. Describe the verified limitation on the website.
+
+Fix website defects within scope during the session. For a deferred fix, open or update an issue
+in the owning repository before handover. Follow the
+[shared issue procedure](https://github.com/splotlabs/.github/blob/main/AGENTS.md#defects-found-during-work).
 
 ## Design skills
 
