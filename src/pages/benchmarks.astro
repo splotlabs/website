@@ -5,7 +5,7 @@ import { benchmarks } from "../data/site";
 // Claims on this page: see "Benchmarks page" in docs/CONTENT-SOURCES.md.
 const description =
   "AV2 decoder benchmarks from the splotlabs/benchmarks harness, with the exact source, build, binary and machine of each result. Pre-alpha.";
-const indexUrl = benchmarks.dataBase === null ? null : new URL("index.json", benchmarks.dataBase);
+const indexUrl = new URL("index.json", benchmarks.dataBase);
 ---
 
 <BaseLayout title="AV2 decoder benchmarks — splot" description={description}>
@@ -24,23 +24,11 @@ const indexUrl = benchmarks.dataBase === null ? null : new URL("index.json", ben
     <h2 id="results-h">Results.</h2>
     <div class="bench">
       <div id="bench-status" class="bench-status" role="status" data-state="static">
-        {indexUrl === null ? (
-          <>
-            <p class="bench-state">Results are not published yet.</p>
-            <p>
-              The benchmark harness is in development, and no measurement is published. The first
-              published dataset will appear here. Until then, read how the results are measured
-              below.
-            </p>
-          </>
-        ) : (
-          <>
-            <p class="bench-state">The interactive results need JavaScript.</p>
-            <p>
-              You can read the published data directly: <a href={indexUrl}>the dataset index</a>.
-            </p>
-          </>
-        )}
+        <p class="bench-state">The interactive results need JavaScript.</p>
+        <p>
+          You can read the published data directly: <a href={indexUrl}>the dataset index</a>. Read
+          how the results are measured below.
+        </p>
       </div>
       <div id="bench-app" class="bench-app" hidden></div>
     </div>
@@ -55,9 +43,10 @@ const indexUrl = benchmarks.dataBase === null ? null : new URL("index.json", ben
         <p class="eyebrow c1">Measure</p>
         <h3>One timing boundary.</h3>
         <p>
-          The harness measures the wall-clock time of the decoder command line. On each machine, it
-          runs the measured cases one at a time. It checks the output of each decoder against the
-          reference output outside the timed pass.
+          The harness measures the wall-clock time of the decoder command line. The timed pass
+          decodes each stream, applies film grain and writes no output. A separate pass without
+          timing checks the output of each decoder against the reference output. On each machine,
+          the measured cases run one at a time.
         </p>
       </article>
       <article class="card">

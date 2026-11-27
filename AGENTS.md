@@ -28,7 +28,8 @@ Do not ask the owner to make these decisions again.
 - `src/scripts/benchmarks.ts` and `src/scripts/bench-data.ts`: browser JavaScript for the
   benchmarks page only (data loading, validation, filters, SVG charts).
 - `public/_headers`: response headers for Workers Static Assets, including the
-  Content-Security-Policy. The policy allows no inline script and no inline style.
+  Content-Security-Policy. The policy allows no inline script and no inline style. `connect-src`
+  names only `'self'` and the benchmark data base (`benchmarks.dataBase` in `src/data/site.ts`).
 - `wrangler.jsonc`: assets only. Do not add `main`, bindings, or routes without approval.
 
 ## Commands

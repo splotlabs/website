@@ -106,7 +106,9 @@ const statusText: Record<Status, string> = {
   interrupted: "Interrupted",
   "not-run": "Not run",
 };
-const threadText = (t: number) => `${t} ${t === 1 ? "thread" : "threads"}`;
+// The thread budget is the value given to the thread option of each decoder.
+const threadText = (t: number) => `${t} requested ${t === 1 ? "thread" : "threads"}`;
+const threadShort = (t: number) => `${t} ${t === 1 ? "thread" : "threads"}`;
 const machineLabel = (m: Machine) =>
   `${m.fingerprint.cpu.model} · ${m.fingerprint.os.name} ${m.fingerprint.os.version} · ${m.fingerprint.arch} (${m.machine_id})`;
 const caseLabel = (c: Case) => `${c.width}×${c.height} · ${c.bit_depth}-bit · ${c.chroma}`;
@@ -138,16 +140,6 @@ function loadSummary(entry: IndexEntry): Promise<Summary> {
     summaries.set(entry.dataset_id, p);
   }
   return p;
-}
-
-/** The data base URL. Tests may set a same-origin path; nothing else is accepted. */
-function dataBase(): URL | null {
-  const hook = (window as { __SPLOT_BENCH_DATA_BASE__?: unknown }).__SPLOT_BENCH_DATA_BASE__;
-  if (typeof hook === "string" && hook.startsWith("/")) {
-    const url = new URL(hook, location.origin);
-    if (url.origin === location.origin) return url;
-  }
-  return benchmarks.dataBase === null ? null : new URL(benchmarks.dataBase);
 }
 
 // ---------- States ----------
@@ -234,9 +226,8 @@ function writeUrl() {
 // ---------- Start ----------
 
 async function start() {
-  const b = dataBase();
-  if (!b || !app || !statusEl) return; // The static "not published" text stays.
-  base = b;
+  if (!app || !statusEl) return;
+  base = new URL(benchmarks.dataBase);
   state("loading", "Loading the results…");
   try {
     index = parseIndex(await getJson(new URL("index.json", base)));
@@ -366,7 +357,7 @@ function form(s: Summary | null): HTMLFormElement {
       ),
       field(
         "threads",
-        "Threads",
+        "Requested threads",
         m.threads.map((t): Opt => [String(t), threadText(t)]),
         String(view.threads),
       ),
@@ -749,7 +740,7 @@ function views(s: Summary): HTMLElement[] {
   // Thread scaling
   if (m.threads.length > 1) {
     const scaling = section("scaling", "Thread scaling", [
-      `Frames/s of ${label(view.scale)} at each thread budget on ${machineLabel(m)}, ${view.depth}-bit streams. The factor against 1 thread comes from the dataset.`,
+      `Frames/s of ${label(view.scale)} at each requested thread budget on ${machineLabel(m)}, ${view.depth}-bit streams. The requested threads are the value given to the thread option of the decoder. The factor against 1 thread comes from the dataset.`,
     ]);
     if (!cases.length) scaling.append(h("p", null, "No stream matches the filters."));
     else {
@@ -758,7 +749,7 @@ function views(s: Summary): HTMLElement[] {
           cases.map((c) => ({
             label: c.name,
             bars: m.threads.map((t) =>
-              bar(threadText(t), cell(c.id, view.scale, t), (x) => x.fps_median, fps),
+              bar(threadShort(t), cell(c.id, view.scale, t), (x) => x.fps_median, fps),
             ),
           })),
         ),
@@ -1143,7 +1134,7 @@ function provenance(s: Summary, m: Machine): HTMLElement {
     ["Operating system", `${fp.os.name} ${fp.os.version}`],
     ["Kernel", fp.os.kernel ?? "not recorded"],
     ["Memory", fp.memory_bytes === null ? "not recorded" : `${f0.format(fp.memory_bytes)} bytes`],
-    ["Thread budgets", m.threads.join(", ")],
+    ["Requested thread budgets", m.threads.join(", ")],
     ["Run id", m.run_id],
     ["Run state", m.run_state],
     ["Run class", m.class],

@@ -13,7 +13,7 @@
     "id": "decode-cli-wall/1",
     "timing_boundary": "process-wall",
     "film_grain": "apply",
-    "output_policy": "raw-discard",
+    "output_policy": "decode-discard",
     "frame_delay": "decoder-default",
     "warmups": 1,
     "repetitions": 5,

@@ -54,12 +54,12 @@ export const cApi = [
   "splot_close",
 ];
 
-// The benchmarks page reads published datasets of the benchmarks harness.
-// See "Benchmark data origin" in docs/DEPLOYMENT.md before you change dataBase.
+// The benchmarks page reads the published datasets of the benchmarks harness.
+// See "Benchmark data origin" in docs/DEPLOYMENT.md before you change dataBase:
+// connect-src in public/_headers must name the same URL.
 export const benchmarks = {
-  // The base URL of the published data (it contains index.json), with a final "/".
-  // null: no data is published, and the page makes no data request.
-  dataBase: null as string | null,
+  // The directory that contains index.json, with a final "/".
+  dataBase: "https://raw.githubusercontent.com/splotlabs/benchmarks/main/published/",
   repo: "https://github.com/splotlabs/benchmarks",
   epic: "https://github.com/splotlabs/splot/issues/2046",
 };

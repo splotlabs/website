@@ -89,27 +89,28 @@ resolver still had a cached negative answer for the new record.
 
 ## Benchmarks page (2026-11-27)
 
-Subject: the production build with `benchmarks.dataBase` set to `null`, served by the project
-Wrangler with the real `_headers`. The loaded views use the synthetic fixtures in
-`tests/fixtures/`, served on a same-origin path by Playwright (`page.route`) and selected by a
-test start hook. The fixtures are not in `dist/`.
+Subject: the production build with the real `benchmarks.dataBase` and the real `_headers`, served
+by the project Wrangler. The tests use no real network: Playwright aborts every request outside
+the local server and answers the data base URL with `page.route` from the synthetic fixtures in
+`tests/fixtures/` (as `text/plain`, like the raw file host). The fixtures are not in `dist/`.
 
 | Check                                                                                    | Method               | Result       |
 | ---------------------------------------------------------------------------------------- | -------------------- | ------------ |
-| Production state "Results are not published yet.", no request outside the page assets    | Playwright           | Passed       |
-| `connect-src` agrees with `benchmarks.dataBase`                                          | Playwright, headers  | Passed       |
-| The start hook refuses other origins                                                     | Playwright           | Passed       |
+| Empty index: "Results are not published yet.", only the index is requested               | Playwright, mock     | Passed       |
+| Index fetch fails (HTTP 500, invalid JSON, 404): error state, methodology stays          | Playwright, mock     | Passed       |
+| `connect-src` names exactly the data base                                                | Playwright, headers  | Passed       |
+| CSP allows the data base and blocks a sibling path of the same host (violation event)    | Playwright           | Passed       |
 | Filters, URL state, baseline change, failed cells, null metrics, thread scaling, history | Playwright, fixtures | Passed       |
-| Unsupported index, summary and workload versions; load error; invalid data; empty index  | Playwright, fixtures | Passed       |
+| Unsupported index, summary and workload versions; invalid data                           | Playwright, fixtures | Passed       |
 | Download links, provenance details, copy action, synthetic and partial banners           | Playwright, fixtures | Passed       |
 | No console errors and no CSP violations                                                  | Playwright           | Passed       |
-| No horizontal overflow at 320, 390, 768 and 1440 px, production and loaded               | Playwright           | Passed       |
-| Automated accessibility (same rules as above), production and loaded, 390 and 1440 px    | axe-core             | 0 violations |
+| No horizontal overflow at 320, 390, 768 and 1440 px, empty and loaded                    | Playwright           | Passed       |
+| Automated accessibility (same rules as above), empty and loaded, 390 and 1440 px         | axe-core             | 0 violations |
 | Usable without JavaScript                                                                | Playwright           | Passed       |
 | Benchmarks page JavaScript                                                               | gzip size            | 10.9 kB      |
 
-Not run: real published data, a real data origin with CORS, Firefox, Safari, real phones and a
-screen reader session.
+Not run: a fetch from the real raw file host, real published data, Firefox, Safari, real phones
+and a screen reader session.
 
 ## Brand fidelity
 

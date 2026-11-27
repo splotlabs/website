@@ -5,9 +5,9 @@ All product claims and commands on the website come from the product repository
 `0616c379f300ccca7afbfcab401444de1c5122b4` (2026-11-27).
 
 The website does not fetch upstream content at build time. At runtime, only the benchmarks page
-fetches content: the published datasets of the
-[splotlabs/benchmarks](https://github.com/splotlabs/benchmarks) harness, from the data origin in
-`src/data/site.ts` (`benchmarks.dataBase`). When the README changes, update the copy by hand and
+fetches content: the published datasets in the `published/` directory of
+[splotlabs/benchmarks](https://github.com/splotlabs/benchmarks), read through
+`raw.githubusercontent.com` (`benchmarks.dataBase` in `src/data/site.ts`). When the README changes, update the copy by hand and
 update the commit above.
 
 Status values:
@@ -39,8 +39,9 @@ Status values:
 ## Benchmarks page
 
 The benchmarks page (`src/pages/benchmarks.astro`) makes no performance claim. It shows numbers
-only from a published dataset, without change, and it computes no statistics. No dataset is
-published, so production shows "Results are not published yet." Synthetic test fixtures are in
+only from a published dataset, without change, and it computes no statistics. While the
+published index lists no dataset, the page shows "Results are not published yet." Synthetic
+test fixtures are in
 `tests/fixtures/` and are not in the build output.
 
 Sources: the Epic [splotlabs/splot#2046](https://github.com/splotlabs/splot/issues/2046) and
@@ -51,14 +52,14 @@ the task [splotlabs/website#7](https://github.com/splotlabs/website/issues/7), r
 contract schemas were not yet on the `main` branch of the benchmarks repository. When they are,
 record the commit here and regenerate the test fixtures from the harness.
 
-| Website content                                                                                                                                                                     | Source                                                                                           | Status                                                              |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------- |
-| "Results are not published yet."                                                                                                                                                    | Epic #2046, "Measurement and presentation contract"; `benchmarks.dataBase` is `null`             | Checked in the build                                                |
-| One wall-clock timing boundary around the decoder command line; measured cases one at a time on each machine; output checked against the reference outside the timed pass           | Epic #2046, "Supported execution environments" and "Measurement and presentation contract"       | Documented                                                          |
-| One physical machine per result; ARM and x86 never combined; 8-bit and 10-bit never mixed in one aggregate; speedups only from matched correct streams, with coverage; no zero bars | Epic #2046, "Measurement and presentation contract"; task #7, "Interaction and comparison views" | Documented. The page code follows it; tested with fixtures          |
-| Source repository and full commit; release only when verified; build origin, configuration, binary SHA-256 and machine; a local build of release source is not an official binary   | Epic #2046, "Exact provenance contract"; data contract, `implementations` and `builds`           | Documented                                                          |
-| Harness, methodology and repeat steps in the benchmarks repository; raw bundles, CSV, campaign lock, manifest and checksums for each dataset                                        | Epic #2046, "Owner decisions and scope"; data contract, `downloads` and `reproduce`              | Documented                                                          |
-| Labels, statuses, banners, units and field names in the interactive views                                                                                                           | Data contract `splotbench.index/1` and `splotbench.summary/1`                                    | Documented. Tested with synthetic fixtures only, not with real data |
+| Website content                                                                                                                                                                                                                                            | Source                                                                                                                           | Status                                                              |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| "Results are not published yet."                                                                                                                                                                                                                           | Epic #2046, "Measurement and presentation contract"; shown when `published/index.json` lists no dataset                          | Checked with a mocked empty index                                   |
+| One wall-clock timing boundary around the decoder command line; the timed pass decodes, applies film grain and writes no output (`output_policy: decode-discard`); output checked in a separate untimed pass; measured cases one at a time on each machine | Epic #2046, "Supported execution environments" and "Measurement and presentation contract"; harness methodology `decode-discard` | Documented                                                          |
+| One physical machine per result; ARM and x86 never combined; 8-bit and 10-bit never mixed in one aggregate; speedups only from matched correct streams, with coverage; no zero bars                                                                        | Epic #2046, "Measurement and presentation contract"; task #7, "Interaction and comparison views"                                 | Documented. The page code follows it; tested with fixtures          |
+| Source repository and full commit; release only when verified; build origin, configuration, binary SHA-256 and machine; a local build of release source is not an official binary                                                                          | Epic #2046, "Exact provenance contract"; data contract, `implementations` and `builds`                                           | Documented                                                          |
+| Harness, methodology and repeat steps in the benchmarks repository; raw bundles, CSV, campaign lock, manifest and checksums for each dataset                                                                                                               | Epic #2046, "Owner decisions and scope"; data contract, `downloads` and `reproduce`                                              | Documented                                                          |
+| Labels, statuses, banners, units and field names in the interactive views; "requested threads" is the value given to the thread option of each decoder                                                                                                     | Data contract `splotbench.index/1` and `splotbench.summary/1`                                                                    | Documented. Tested with synthetic fixtures only, not with real data |
 
 The website does not show the licensing email address. It links to the license section of the
 README, which contains the address.

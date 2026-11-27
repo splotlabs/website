@@ -4,10 +4,12 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { benchmarks } from "../src/data/site";
 
-// The production build has no data origin. The tests load synthetic fixtures through a
-// same-origin path: the page accepts a test start hook only for a same-origin path.
+// The tests never use the real network. Every request outside the local server is aborted,
+// and the configured data origin is answered from the synthetic fixtures in tests/fixtures/.
+// Like the real raw file host, the mock serves JSON as text/plain with an open CORS header.
 const fixtures = new URL("./fixtures/", import.meta.url);
 const origin = "http://127.0.0.1:8787";
+const base = benchmarks.dataBase;
 const full = "/benchmarks/?dataset=ds-f1f1f1f1f1f10003";
 const summary = (id: string) =>
   JSON.parse(readFileSync(new URL(`main/datasets/${id}/summary.json`, fixtures), "utf8"));
@@ -17,18 +19,24 @@ const commits = Object.fromEntries(
     i.commit,
   ]),
 ) as Record<string, string>;
+const cors = { "access-control-allow-origin": "*" };
 
-async function withData(page: Page, scenario = "main") {
-  await page.addInitScript((base) => {
-    (window as { __SPLOT_BENCH_DATA_BASE__?: string }).__SPLOT_BENCH_DATA_BASE__ = base;
-  }, `/__bench__/${scenario}/`);
-  await page.route("**/__bench__/**", async (route) => {
-    const rel = new URL(route.request().url()).pathname.slice("/__bench__/".length);
-    const file = fileURLToPath(new URL(rel, fixtures));
+test.beforeEach(async ({ page }) => {
+  await page.route(
+    (url) => url.origin !== origin,
+    (route) => route.abort(),
+  );
+});
+
+/** Answers the data origin from tests/fixtures/<scenario>/. */
+async function withData(page: Page, scenario: string) {
+  await page.route(`${base}**`, async (route) => {
+    const rel = route.request().url().slice(base.length);
+    const file = fileURLToPath(new URL(`${scenario}/${rel}`, fixtures));
     if (!rel.includes("..") && existsSync(file) && statSync(file).isFile()) {
-      await route.fulfill({ path: file, contentType: "application/json" });
+      await route.fulfill({ path: file, contentType: "text/plain; charset=utf-8", headers: cors });
     } else {
-      await route.fulfill({ status: 404, body: "Not found" });
+      await route.fulfill({ status: 404, body: "404: Not Found", headers: cors });
     }
   });
 }
@@ -43,13 +51,13 @@ function watchProblems(page: Page) {
 
 const status = (page: Page) => page.locator("#bench-status");
 
-test("production: results are not published and no data is requested", async ({ page }) => {
+test("production: an empty index shows that results are not published", async ({ page }) => {
   const problems = watchProblems(page);
   const requests: string[] = [];
   page.on("request", (r) => requests.push(r.url()));
+  await withData(page, "empty");
   const response = await page.goto("/benchmarks/");
   expect(response?.status()).toBe(200);
-  await page.waitForLoadState("networkidle");
   await expect(status(page).locator(".bench-state")).toHaveText("Results are not published yet.");
   await expect(page.locator("#bench-app")).toBeHidden();
   await expect(page.locator(".pill")).toContainText("Pre-alpha");
@@ -61,46 +69,52 @@ test("production: results are not published and no data is requested", async ({ 
     "href",
     benchmarks.repo,
   );
-  for (const url of requests.map((u) => new URL(u))) {
-    expect(url.origin).toBe(origin);
+  await page.waitForLoadState("networkidle");
+  // Page assets, and one data request: the index.
+  for (const url of requests.map((u) => new URL(u)).filter((u) => u.origin === origin)) {
     expect(url.pathname).toMatch(/^\/(benchmarks\/|_astro\/[^/]+|favicon\.svg)$/);
   }
+  expect(requests.filter((u) => !u.startsWith(origin))).toEqual([`${base}index.json`]);
   expect(problems).toEqual([]);
 });
 
-test("the data origin is allowed by the served connect-src", async ({ request }) => {
+test("connect-src names exactly the data base", async ({ request }) => {
   const csp = (await request.get("/benchmarks/")).headers()["content-security-policy"];
   const connect = csp
     .split(";")
     .map((d) => d.trim().split(/\s+/))
     .find((d) => d[0] === "connect-src")!
     .slice(1);
-  if (benchmarks.dataBase === null) {
-    expect(connect).toEqual(["'self'"]);
-    return;
-  }
-  const url = new URL(benchmarks.dataBase);
+  const url = new URL(base);
   expect(url.protocol).toBe("https:");
   expect(url.pathname.endsWith("/")).toBe(true);
-  expect(connect).toContain(url.origin);
+  expect(connect).toEqual(["'self'", base]);
 });
 
-test("the start hook accepts only a same-origin path", async ({ page }) => {
-  const requests: string[] = [];
-  page.on("request", (r) => requests.push(r.url()));
-  for (const hook of ["//example.com/data/", "/\\example.com/data/", "https://example.com/"]) {
-    await page.addInitScript((base) => {
-      (window as { __SPLOT_BENCH_DATA_BASE__?: string }).__SPLOT_BENCH_DATA_BASE__ = base;
-    }, hook);
-    await page.goto("/benchmarks/");
-    await expect(status(page).locator(".bench-state")).toHaveText("Results are not published yet.");
-  }
-  expect(requests.filter((u) => !u.startsWith(origin))).toEqual([]);
+test("the CSP allows the data base and blocks other paths of the host", async ({ page }) => {
+  await withData(page, "empty");
+  await page.goto("/benchmarks/");
+  await expect(status(page).locator(".bench-state")).toHaveText("Results are not published yet.");
+  const result = await page.evaluate(async (dataBase) => {
+    const blocked: string[] = [];
+    document.addEventListener("securitypolicyviolation", (e) => blocked.push(e.blockedURI));
+    const allowed = (await fetch(`${dataBase}index.json`)).ok;
+    const sibling = new URL("../other/index.json", dataBase).href;
+    const rejected = await fetch(sibling).then(
+      () => false,
+      () => true,
+    );
+    await new Promise((r) => setTimeout(r, 100));
+    return { allowed, rejected, blocked, sibling };
+  }, base);
+  expect(result.allowed).toBe(true);
+  expect(result.rejected).toBe(true);
+  expect(result.blocked).toContain(result.sibling);
 });
 
 test("loaded view: default dataset, filters and URL state", async ({ page }) => {
   const problems = watchProblems(page);
-  await withData(page);
+  await withData(page, "main");
   await page.goto("/benchmarks/");
   // latest_complete is the default. Its origin is official, so it has no origin banner.
   await expect(page.locator("#f-dataset")).toHaveValue("ds-f1f1f1f1f1f10004");
@@ -147,7 +161,7 @@ test("loaded view: default dataset, filters and URL state", async ({ page }) => 
 });
 
 test("baseline change uses the speedups and aggregates of the dataset", async ({ page }) => {
-  await withData(page);
+  await withData(page, "main");
   await page.goto(`${full}&machine=fixture-arm-01&threads=1&depth=10&baseline=fixture-c`);
   const speedup = page.locator("#view-speedup");
   await expect(speedup.locator("thead th")).toHaveText(["Stream", /^fixture-a/, /^fixture-b/]);
@@ -166,7 +180,7 @@ test("baseline change uses the speedups and aggregates of the dataset", async ({
 });
 
 test("a failed cell is a labelled status, not a zero bar", async ({ page }) => {
-  await withData(page);
+  await withData(page, "main");
   await page.goto(`${full}&machine=fixture-arm-01&threads=1&depth=10`);
   const view = page.locator("#view-throughput");
   const row = view.locator("tbody tr", { hasText: /fixture-b 1\.2\.3/ }).first();
@@ -185,15 +199,19 @@ test("a failed cell is a labelled status, not a zero bar", async ({ page }) => {
 });
 
 test("thread scaling shows each thread budget", async ({ page }) => {
-  await withData(page);
+  await withData(page, "main");
   await page.goto(`${full}&machine=fixture-arm-01&depth=8&scale=fixture-a`);
   const view = page.locator("#view-scaling");
-  await expect(view.locator("thead th")).toHaveText(["Stream", "1 thread", "4 threads"]);
+  await expect(view.locator("thead th")).toHaveText([
+    "Stream",
+    "1 requested thread",
+    "4 requested threads",
+  ]);
   await expect(view.locator("tbody tr").first()).toContainText("3.50× against 1 thread");
 });
 
 test("partial and synthetic datasets carry banners", async ({ page }) => {
-  await withData(page);
+  await withData(page, "main");
   await page.goto("/benchmarks/?dataset=ds-f1f1f1f1f1f10002&machine=fixture-arm-01&threads=4");
   await expect(page.locator('[data-banner="partial"]')).toContainText("Incomplete dataset.");
   await expect(page.locator('[data-banner="partial"]')).toContainText(
@@ -206,7 +224,7 @@ test("partial and synthetic datasets carry banners", async ({ page }) => {
 });
 
 test("unsupported data versions and kinds have their own state", async ({ page }) => {
-  await withData(page);
+  await withData(page, "main");
   await page.goto("/benchmarks/?dataset=ds-f1f1f1f1f1f10005");
   await expect(status(page)).toHaveAttribute("data-state", "unsupported");
   await expect(status(page)).toContainText("splotbench.summary/2");
@@ -225,19 +243,27 @@ test("an unsupported index version has its own state", async ({ page }) => {
   await expect(status(page)).toContainText("splotbench.index/2");
 });
 
-test("an empty index shows that results are not published", async ({ page }) => {
-  await withData(page, "empty");
-  await page.goto("/benchmarks/");
-  await expect(status(page).locator(".bench-state")).toHaveText("Results are not published yet.");
-});
+for (const [name, reply, message] of [
+  ["HTTP 500", { status: 500, body: "Server error" }, "HTTP 500"],
+  ["invalid JSON", { status: 200, body: "{ not json" }, "is not valid JSON"],
+] as const) {
+  test(`a failed index fetch (${name}) shows the error state and the method`, async ({ page }) => {
+    await page.route(`${base}index.json`, (route) => route.fulfill({ ...reply, headers: cors }));
+    await page.goto("/benchmarks/");
+    await expect(status(page)).toHaveAttribute("data-state", "error");
+    await expect(status(page)).toContainText("The results could not be loaded.");
+    await expect(status(page)).toContainText(message);
+    await expect(page.locator("#method h3")).toHaveCount(4);
+  });
+}
 
-test("load errors and invalid data show the error state", async ({ page }) => {
+test("a missing file and invalid data show the error state", async ({ page }) => {
   await withData(page, "missing");
   await page.goto("/benchmarks/");
   await expect(status(page)).toHaveAttribute("data-state", "error");
   await expect(status(page)).toContainText("HTTP 404");
 
-  await withData(page);
+  await withData(page, "main");
   await page.goto("/benchmarks/?dataset=ds-f1f1f1f1f1f10007");
   await expect(status(page)).toHaveAttribute("data-state", "error");
   await expect(status(page)).toContainText('summary.cells[0].status has the unknown value "fast"');
@@ -245,9 +271,9 @@ test("load errors and invalid data show the error state", async ({ page }) => {
 });
 
 test("downloads resolve from the dataset metadata", async ({ page }) => {
-  await withData(page);
+  await withData(page, "main");
   await page.goto(full);
-  const dir = `${origin}/__bench__/main/datasets/ds-f1f1f1f1f1f10003/`;
+  const dir = `${base}datasets/ds-f1f1f1f1f1f10003/`;
   const files = page.locator("#view-downloads");
   const expected: [string | RegExp, string][] = [
     ...summary("ds-f1f1f1f1f1f10003").machines.map(
@@ -272,7 +298,7 @@ test("downloads resolve from the dataset metadata", async ({ page }) => {
 
 test("provenance: labels, details and copy", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-  await withData(page);
+  await withData(page, "main");
   await page.goto(`${full}&machine=fixture-arm-01&threads=1&depth=8`);
   const a = `fixture-a ${commits["fixture-a"].slice(0, 12)} (development)`;
   const b = `fixture-b 1.2.3 (${commits["fixture-b"].slice(0, 12)})`;
@@ -318,7 +344,7 @@ test("provenance: labels, details and copy", async ({ page, context }) => {
 });
 
 test("history is loaded only when it is opened", async ({ page }) => {
-  await withData(page);
+  await withData(page, "main");
   const loaded: string[] = [];
   page.on("request", (r) => r.url().includes("summary.json") && loaded.push(r.url()));
   await page.goto(`${full}&machine=fixture-arm-01&threads=1&depth=8`);
@@ -343,7 +369,7 @@ test("no console errors or CSP violations in the loaded view", async ({ page }) 
       console.error(`CSP: ${e.violatedDirective} ${e.blockedURI}`),
     );
   });
-  await withData(page);
+  await withData(page, "main");
   await page.goto(full);
   await expect(page.locator("#view-throughput .chart svg")).toBeVisible();
   await page.locator("#f-machine").selectOption("fixture-x86-01");
@@ -361,7 +387,11 @@ test("the benchmarks page is usable without JavaScript", async ({ browser }) => 
   const page = await context.newPage();
   await page.goto("/benchmarks/");
   await expect(page.locator("h1")).toHaveText("AV2 decoder benchmarks.");
-  await expect(page.locator(".bench-state")).toHaveText("Results are not published yet.");
+  await expect(page.locator(".bench-state")).toHaveText("The interactive results need JavaScript.");
+  await expect(page.getByRole("link", { name: "the dataset index" })).toHaveAttribute(
+    "href",
+    `${base}index.json`,
+  );
   await expect(page.locator("#method h3")).toHaveCount(4);
   await expect(page.getByRole("link", { name: "Benchmark harness" })).toBeVisible();
   await context.close();
@@ -372,8 +402,9 @@ for (const loaded of [false, true]) {
   for (const width of [320, 390, 768, 1440]) {
     test(`benchmarks ${name}: no horizontal overflow at ${width}px`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 });
-      if (loaded) await withData(page);
+      await withData(page, loaded ? "main" : "empty");
       await page.goto(loaded ? `${full}&machine=fixture-x86-01` : "/benchmarks/");
+      if (!loaded) await expect(status(page)).toHaveAttribute("data-state", "empty");
       if (loaded) {
         await expect(page.locator("#view-throughput .chart svg")).toBeVisible();
         for (const s of await page.locator("details.prov summary").all()) await s.click();
@@ -388,8 +419,9 @@ for (const loaded of [false, true]) {
   for (const width of [390, 1440]) {
     test(`benchmarks ${name}: axe finds no violations at ${width}px`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 });
-      if (loaded) await withData(page);
+      await withData(page, loaded ? "main" : "empty");
       await page.goto(loaded ? `${full}&machine=fixture-x86-01` : "/benchmarks/");
+      if (!loaded) await expect(status(page)).toHaveAttribute("data-state", "empty");
       if (loaded) {
         await expect(page.locator("#view-throughput .chart svg")).toBeVisible();
         for (const s of await page.locator("details.prov summary").all()) await s.click();

@@ -83,36 +83,36 @@ GitHub Actions, and the ruleset makes them a condition of the merge.
 
 ## Benchmark data origin
 
-The benchmarks page (`/benchmarks/`) reads `index.json` and the `summary.json` file of the
-selected dataset from one data origin in the browser. The
-[splotlabs/benchmarks](https://github.com/splotlabs/benchmarks) harness publishes these files.
+The benchmarks page (`/benchmarks/`) reads `index.json`, and then the `summary.json` of the
+selected dataset, in the browser. There is no bucket, no storage domain and no CORS rule to
+manage. The published datasets are files in the `published/` directory of
+[splotlabs/benchmarks](https://github.com/splotlabs/benchmarks), and the page reads them through
+the raw file host of GitHub:
 
-Current state: no data origin is configured. `benchmarks.dataBase` in `src/data/site.ts` is
-`null`. The page makes no data request and shows "Results are not published yet."
+| Item                        | Value                                                                    |
+| --------------------------- | ------------------------------------------------------------------------ |
+| `benchmarks.dataBase`       | `https://raw.githubusercontent.com/splotlabs/benchmarks/main/published/` |
+| Index                       | `<dataBase>index.json`                                                   |
+| Dataset                     | `<dataBase>datasets/<dataset_id>/summary.json` and its download files    |
+| `connect-src` in `_headers` | `'self'` and the same URL, as a path-scoped source                       |
 
-When a published dataset exists, make these two edits in one pull request:
+Publication is a pull request in splotlabs/benchmarks that adds a dataset directory and updates
+`published/index.json`. The website needs no change and no deployment for a new dataset. When
+the index lists no dataset, the page shows "Results are not published yet." When the index
+cannot be loaded, the page shows the load error state and the static methodology text.
 
-1. In `src/data/site.ts`, set `benchmarks.dataBase` to the https URL of the directory that
-   contains `index.json`, with a final `/`. Form: `https://<data host>/<path>/`.
-2. In `public/_headers`, add the origin of that URL (scheme and host, without a path) to
-   `connect-src`. Form: `connect-src 'self' https://<data host>`. Do not add other origins.
+Properties of the raw file host that the page must tolerate:
 
-The test "the data origin is allowed by the served connect-src" in `tests/benchmarks.spec.ts`
-fails when the two edits do not agree, or when `connect-src` allows more than `'self'` while
-`dataBase` is `null`.
+- It serves JSON as `text/plain`. The page parses the body and does not check the content type.
+- It serves the bundles and the other download files as ordinary downloads. The download links
+  are navigations, so they need no `connect-src` entry.
+- It caches responses for some minutes. A merged publication can take that long to appear.
+- It sends an open CORS header, and the page sends no credentials (`credentials: "omit"`).
 
-The storage must meet these conditions:
-
-- It answers `GET` requests for `index.json` and the dataset files with
-  `Access-Control-Allow-Origin: https://splotlabs.io`. A Worker Preview has a `workers.dev`
-  origin. A Preview shows the load error state unless the storage also allows that origin.
-- It does not need credentials. The page sends requests without cookies (`credentials: "omit"`),
-  so the storage must not require `Access-Control-Allow-Credentials`.
-- It serves JSON with `Content-Type: application/json`.
-- Published dataset files do not change. A new dataset gets a new directory.
-
-The download links (raw bundles, CSV, lock, manifest, checksums) are ordinary links. They need no
-CORS header and no CSP change.
+To change the data base, make two edits in one pull request: set `benchmarks.dataBase` in
+`src/data/site.ts` (an https URL with a final `/`), and put the same URL in `connect-src` in
+`public/_headers`. Do not add other sources. The test "connect-src names exactly the data base"
+in `tests/benchmarks.spec.ts` fails when the two do not agree.
 
 ## Roll back the content
 
