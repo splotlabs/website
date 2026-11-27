@@ -108,13 +108,19 @@ of these files in the tests. The fixtures are not in `dist/`.
 | Download links, provenance details, copy action, synthetic and partial banners           | Playwright, fixtures | Passed       |
 | Each generated dataset loads, no console errors and no CSP violations                    | Playwright           | Passed       |
 | Default without `latest_complete`, partial coverage text, history by `series_id`         | Playwright, fixtures | Passed       |
+| Each schema-nullable field set to null in each generated summary: loads, no "null" text  | Playwright, fixtures | Passed       |
+| Other schema enum values; another methodology, aggregation or metric unit is unsupported | Playwright, fixtures | Passed       |
 | No horizontal overflow at 320, 390, 768 and 1440 px, empty and loaded                    | Playwright           | Passed       |
 | Automated accessibility (same rules as above), empty and loaded, 390 and 1440 px         | axe-core             | 0 violations |
 | Usable without JavaScript                                                                | Playwright           | Passed       |
-| Benchmarks page JavaScript                                                               | gzip size            | 12.2 kB      |
+| Benchmarks page JavaScript                                                               | gzip size            | 12.8 kB      |
 
-Not run: a fetch from the real raw file host, real published data, Firefox, Safari, real phones
-and a screen reader session.
+After the merge, an acceptance audit fetched the data from the real raw file host in production:
+`index.json` answered HTTP 200 with an open CORS header, and the page reported no CSP
+violation.
+
+Not run: real published datasets (the published index has none yet), Firefox, Safari, real
+phones and a screen reader session.
 
 ## Brand fidelity
 

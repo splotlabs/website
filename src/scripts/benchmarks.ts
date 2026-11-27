@@ -97,6 +97,7 @@ const f2 = new Intl.NumberFormat("en", { minimumFractionDigits: 2, maximumFracti
 const f3 = new Intl.NumberFormat("en", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 const f0 = new Intl.NumberFormat("en");
 const notMeasured = () => h("span", { class: "muted" }, "not measured");
+const notRecorded = () => h("span", { class: "muted" }, "not recorded");
 const opt = (v: number | null, fmt: (v: number) => string): Kid =>
   v === null ? notMeasured() : fmt(v);
 const fps = (v: number) => f1.format(v);
@@ -113,8 +114,13 @@ const statusText: Record<Status, string> = {
 // The thread budget is the value given to the thread option of each decoder.
 const threadText = (t: number) => `${t} requested ${t === 1 ? "thread" : "threads"}`;
 const threadShort = (t: number) => `${t} ${t === 1 ? "thread" : "threads"}`;
+const cpuText = (m: Machine) => m.fingerprint.cpu.model || "CPU model not known";
+const osText = (m: Machine) =>
+  [m.fingerprint.os.name || "OS not known", m.fingerprint.os.version ?? "(version not known)"].join(
+    " ",
+  );
 const machineLabel = (m: Machine) =>
-  `${m.fingerprint.cpu.model} · ${m.fingerprint.os.name} ${m.fingerprint.os.version} · ${m.fingerprint.arch} (${m.machine_id})`;
+  `${cpuText(m)} · ${osText(m)} · ${m.fingerprint.arch} (${m.machine_id})`;
 const caseLabel = (c: Case) => `${c.width}×${c.height} · ${c.bit_depth}-bit · ${c.chroma}`;
 
 // ---------- Data loading ----------
@@ -145,7 +151,7 @@ function loadSummary(e: IndexEntry): Promise<Summary> {
   let p = summaries.get(e.dataset_id);
   if (!p) {
     p = getJson(new URL("summary.json", datasetDir(e)), MAX_BYTES.summary).then((raw) =>
-      parseSummary(raw, e.dataset_id),
+      parseSummary(raw, e),
     );
     summaries.set(e.dataset_id, p);
   }
@@ -171,13 +177,14 @@ const largest = (xs: number[]) => xs.reduce((a, b) => (b > a ? b : a), 0);
 
 // ---------- States ----------
 
-function state(kind: string, title: string, detail = "") {
+function state(kind: string, title: string, detail = "", link = false) {
   if (!statusEl) return;
   statusEl.dataset.state = kind;
   statusEl.hidden = kind === "loaded";
   statusEl.replaceChildren(
     h("p", { class: "bench-state" }, title),
     detail ? h("p", null, detail) : "",
+    link ? h("p", null, h("a", { href: new URL("index.json", base).href }, "Dataset index")) : "",
   );
 }
 
@@ -185,11 +192,14 @@ function fail(e: unknown) {
   if (e instanceof UnsupportedError) {
     state(
       "unsupported",
-      "This page does not support the data version of this dataset.",
-      `${e.message} The raw data in the downloads stays available.`,
+      e.cause === "workload"
+        ? "This page does not support this kind of data."
+        : "This page does not support the data version of this dataset.",
+      e.message,
+      true,
     );
   } else if (e instanceof DataError || e instanceof HttpError) {
-    state("error", "The results could not be loaded.", e.message);
+    state("error", "The results could not be loaded.", e.message, true);
   } else {
     state("error", "The results could not be loaded.", "The data request failed.");
   }
@@ -303,6 +313,10 @@ async function selectDataset(id: string, params: URLSearchParams, note = "") {
   state("loading", "Loading the dataset…");
   let s: Summary;
   try {
+    // The index schema allows only decode. Another workload is not loaded as decode data.
+    if (entry.workload !== "decode") {
+      throw new UnsupportedError(`The dataset has the workload "${entry.workload}".`, "workload");
+    }
     s = await loadSummary(entry);
   } catch (e) {
     if (view.dataset !== id) return;
@@ -347,6 +361,7 @@ function render(note = "") {
   body = current ? h("div", { class: "bench-body" }) : null;
   app.replaceChildren(
     note ? h("p", { class: "banner", "data-banner": "note" }, note) : "",
+    ...(current ? banners(current) : []),
     form(current),
     body ?? "",
   );
@@ -359,7 +374,7 @@ function update() {
   if (!body || !current) return;
   const open = [...body.querySelectorAll("details[open]")].map((d) => d.id);
   charts.clear();
-  body.replaceChildren(...banners(current), meta(current), ...views(current));
+  body.replaceChildren(meta(current), ...views(current));
   for (const id of open) document.getElementById(id)?.setAttribute("open", "");
   redraw();
 }
@@ -560,6 +575,11 @@ function views(s: Summary): HTMLElement[] {
   );
   const impls = s.implementations.filter((i) => view.decoders.includes(i.id));
   const keys = s.implementations.map((i) => i.id);
+  // Six decoders have distinct bar styles. Beyond six the styles repeat; the names identify them.
+  const repeats =
+    keys.length > 6
+      ? " Bar styles repeat after six decoders. The name beside each bar identifies the decoder."
+      : "";
   const cell = (caseId: string, impl: string, threads = view.threads) =>
     cellOf(s, m.machine_id, caseId, threads, impl);
   const buildIndex = (b: Build | undefined) => (b ? s.builds.indexOf(b) : -1);
@@ -580,7 +600,7 @@ function views(s: Summary): HTMLElement[] {
 
   // Throughput
   const throughput = section("throughput", "Throughput", [
-    `Median frames/s of the valid repetitions. Higher is better. ${scope}.`,
+    `Median frames/s of the valid repetitions. Higher is better. ${scope}.${repeats}`,
   ]);
   if (empty) throughput.append(h("p", null, empty));
   else {
@@ -589,7 +609,7 @@ function views(s: Summary): HTMLElement[] {
         cases.map((c) => ({
           label: c.name,
           bars: impls.map((i) => ({
-            ...bar(i.name, cell(c.id, i.id), (x) => x.fps_median, fps),
+            ...bar(i.name || i.id, cell(c.id, i.id), (x) => x.fps_median, fps),
             key: i.id,
           })),
         })),
@@ -683,7 +703,7 @@ function views(s: Summary): HTMLElement[] {
   // Speedup
   const others = impls.filter((i) => i.id !== view.baseline);
   const speedup = section("speedup", "Speedup", [
-    `Throughput ratio against the baseline ${label(view.baseline)}. A ratio above 1 means more frames/s than the baseline. A stream has a ratio only when both decoders gave correct, measured results. ${scope}.`,
+    `Throughput ratio against the baseline ${label(view.baseline)}. A ratio above 1 means more frames/s than the baseline. A stream has a ratio only when both decoders gave correct, measured results. ${scope}.${repeats}`,
   ]);
   if (empty || !others.length) {
     speedup.append(h("p", null, empty || "Select a decoder other than the baseline."));
@@ -755,14 +775,14 @@ function views(s: Summary): HTMLElement[] {
             const r = ratios.get(`${c.id}|${i.id}`);
             return r === undefined
               ? {
-                  label: i.name,
+                  label: i.name || i.id,
                   key: i.id,
                   value: null,
                   text: "not comparable",
                   title: `${label(i.id)}: not comparable (${why(c.id, i.id)})`,
                 }
               : {
-                  label: i.name,
+                  label: i.name || i.id,
                   key: i.id,
                   value: r,
                   text: ratio(r),
@@ -972,8 +992,13 @@ function chartBox(groups: Group[], keys: string[] = [], ref?: number): HTMLEleme
       root.append(label);
       y += 22;
       g.bars.forEach((b, i) => {
-        const color = b.key !== undefined && keys.includes(b.key) ? keys.indexOf(b.key) : i;
-        const row = svg("g", { class: `row s${color % 3}` });
+        // Decoders keep one style each: three colors, then the same colors dashed. Neighbours
+        // always differ in color; from the seventh decoder on the styles repeat, and the name
+        // beside each bar (and a note in the view text) identifies the decoder. Other series
+        // are neutral.
+        const n = b.key === undefined ? -1 : keys.indexOf(b.key);
+        const style = n < 0 ? "sn" : `s${n % 3}${Math.floor(n / 3) % 2 ? " alt" : ""}`;
+        const row = svg("g", { class: `row ${style}` });
         row.append(svg("title", {}, b.title));
         row.append(
           svg(
@@ -1066,7 +1091,7 @@ function historyView(s: Summary, m: Machine, impls: string[]): HTMLElement {
     );
     if (caseSel.value !== c || !details.open) return;
     const found = (sum: Summary, impl: string) => cellOf(sum, m.machine_id, c, view.threads, impl);
-    const nameOf = (impl: string) => s.implementations.find((i) => i.id === impl)?.name ?? impl;
+    const nameOf = (impl: string) => s.implementations.find((i) => i.id === impl)?.name || impl;
     const labelIn = (sum: Summary, impl: string) => {
       const i = sum.implementations.find((x) => x.id === impl);
       return i ? implLabel(i) : impl;
@@ -1098,7 +1123,7 @@ function historyView(s: Summary, m: Machine, impls: string[]): HTMLElement {
             null,
             `Frames/s over time. ${machineLabel(m)}, ${threadText(view.threads)}.`,
           ),
-          thead(["Dataset", ...impls]),
+          thead(["Dataset", ...impls.map(nameOf)]),
           h(
             "tbody",
             null,
@@ -1148,15 +1173,18 @@ function historyView(s: Summary, m: Machine, impls: string[]): HTMLElement {
 // ---------- Provenance and downloads ----------
 
 /** A provenance row: label, value and how the value is shown. */
-type Row = [string, string, ("text" | "code" | "link")?];
+/** A null or empty value is a fact that the harness did not record. */
+type Row = [string, string | null, ("text" | "code" | "link")?];
 
 function provBlock(id: string, title: string, rows: Row[], what: string): HTMLElement {
+  const value = ([, v, kind]: Row): Kid =>
+    !v ? notRecorded() : kind === "link" ? ext(v) : kind === "code" ? code(v) : v;
   return h(
     "details",
     { class: "prov", id },
     h("summary", null, title),
-    kv(rows.map(([k, v, kind]) => [k, kind === "link" ? ext(v) : kind === "code" ? code(v) : v])),
-    copyButton(rows.map(([k, v]) => `${k}: ${v}`).join("\n"), what),
+    kv(rows.map((r) => [r[0], value(r)])),
+    copyButton(rows.map(([k, v]) => `${k}: ${v || "not recorded"}`).join("\n"), what),
   );
 }
 
@@ -1165,7 +1193,6 @@ function provenance(s: Summary, m: Machine, cases: Case[]): HTMLElement {
   const sec = section("provenance", "Provenance", [
     "The exact source, build and binary of each decoder on this machine, the machine, the streams and the measurement settings.",
   ]);
-  const notRecorded = (v: string | null) => v ?? "not recorded";
   s.builds.forEach((b, n) => {
     if (b.machine_id !== m.machine_id || !shown.has(b.implementation)) return;
     const i = s.implementations.find((x) => x.id === b.implementation)!;
@@ -1176,7 +1203,7 @@ function provenance(s: Summary, m: Machine, cases: Case[]): HTMLElement {
       ["Commit", i.commit, "code"],
       ["Identity", i.identity === "release" ? "Verified release" : "Development commit"],
       ["Release", i.release ? `${i.release.version} (tag ${i.release.tag})` : "none"],
-      ["Release page", i.release?.url ?? "none", i.release ? "link" : "text"],
+      ["Release page", i.release ? i.release.url : "none", i.release ? "link" : "text"],
       ["Build origin", buildOriginText[i.build_origin]],
       ["Source snapshot", i.snapshot_sha256, "code"],
       ["Build id", b.build_id, "code"],
@@ -1187,11 +1214,11 @@ function provenance(s: Summary, m: Machine, cases: Case[]): HTMLElement {
       ["Toolchain", b.toolchain.map(([k, v]) => `${k}: ${v}`).join("; ")],
       ["Configuration", c.summary],
       ["Build command", c.arguments.join(" "), "code"],
-      ["Target CPU", notRecorded(c.target_cpu)],
-      ["SIMD", notRecorded(c.simd)],
-      ["LTO", notRecorded(c.lto)],
+      ["Target CPU", c.target_cpu],
+      ["SIMD", c.simd],
+      ["LTO", c.lto],
       ["PGO", c.pgo === null ? "not recorded" : c.pgo ? "yes" : "no"],
-      ["Version output (raw text, not a release proof)", notRecorded(b.version_output), "code"],
+      ["Version output (raw text, not a release proof)", b.version_output, "code"],
       ["Machine", machineLabel(m)],
       ["Dataset", s.dataset_id, "code"],
     ];
@@ -1212,21 +1239,27 @@ function provenance(s: Summary, m: Machine, cases: Case[]): HTMLElement {
     ["Cores", cores.join(", ") || "not recorded"],
     ["ISA", fp.cpu.isa.join(", ") || "not recorded"],
     ["Architecture", fp.arch],
-    ["Operating system", `${fp.os.name} ${fp.os.version}`],
-    ["Kernel", notRecorded(fp.os.kernel)],
+    ["Operating system", osText(m)],
+    ["Kernel", fp.os.kernel],
     ["Memory", fp.memory_bytes === null ? "not recorded" : `${f0.format(fp.memory_bytes)} bytes`],
-    ["Power settings", notRecorded(fp.power)],
-    ["CPU affinity", notRecorded(fp.affinity)],
+    ["Power settings", fp.power],
+    ["CPU affinity", fp.affinity],
     ["Requested thread budgets", m.threads.join(", ")],
     ["Run id", m.run_id, "code"],
     ["Run state", m.run_state],
     ["Run class", m.class],
-    ["Measured (UTC)", `${m.measured_utc.first} to ${m.measured_utc.last}`],
+    [
+      "Measured (UTC)",
+      m.measured_utc.first && m.measured_utc.last
+        ? `${m.measured_utc.first} to ${m.measured_utc.last}`
+        : "not measured",
+    ],
     ["Series id", m.series_id, "code"],
     ["Host fingerprint digest", m.fingerprint_digest, "code"],
   ];
   const streamRows = cases.flatMap((c): Row[] => [
     [c.name, `${caseLabel(c)} · ${c.frames} frames · ${f0.format(c.bytes)} bytes`],
+    [`${c.name}: film grain`, c.film_grain === null ? "not known" : c.film_grain ? "yes" : "no"],
     [`${c.name}: input SHA-256`, c.input_sha256, "code"],
     [`${c.name}: source`, c.url, "link"],
   ]);

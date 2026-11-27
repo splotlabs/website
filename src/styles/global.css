@@ -884,6 +884,28 @@ h3 {
 .chart .s2 .fill {
   fill: var(--pink);
 }
+.chart .s0 {
+  stroke: var(--cyan);
+}
+.chart .s1 {
+  stroke: var(--violet);
+}
+.chart .s2 {
+  stroke: var(--pink);
+}
+/* Decoders four to six: the same colors, translucent with a dashed outline. */
+.chart .alt .fill {
+  fill-opacity: 0.3;
+  stroke-width: 1.5;
+  stroke-dasharray: 4 2;
+}
+.chart text {
+  stroke: none;
+}
+/* Series that are not decoders, for example thread budgets. */
+.chart .sn .fill {
+  fill: var(--muted);
+}
 .chart .ref {
   stroke: var(--muted);
   stroke-dasharray: 3 3;

@@ -43,10 +43,12 @@ const indexUrl = new URL("index.json", benchmarks.dataBase);
         <p class="eyebrow c1">Measure</p>
         <h3>One timing boundary.</h3>
         <p>
-          The harness measures the wall-clock time of the decoder command line. The timed pass
-          decodes each stream, applies film grain and writes no output. A separate pass without
-          timing checks the output of each decoder against the reference output. On each machine,
-          the measured cases run one at a time.
+          The harness measures the wall-clock time of the decoder command line, from immediately
+          before process creation to process exit. That time includes process start, reading the
+          file, demuxing, decoding and film grain. It excludes writing and hashing the output: the
+          timed pass writes no output, and a separate pass without timing checks the output of each
+          decoder against the reference output. On each machine, the measured cases run one at a
+          time.
         </p>
       </article>
       <article class="card">

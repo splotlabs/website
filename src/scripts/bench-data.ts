@@ -58,13 +58,13 @@ export interface Machine {
   run_state: string;
   class: string;
   threads: number[];
-  measured_utc: { first: string; last: string };
+  measured_utc: { first: string | null; last: string | null };
   fingerprint_digest: string;
   fingerprint: {
     arch: string;
-    os: { name: string; version: string; kernel: string | null };
+    os: { name: string; version: string | null; kernel: string | null };
     cpu: {
-      model: string;
+      model: string | null;
       physical_cores: number | null;
       logical_cores: number | null;
       performance_cores: number | null;
@@ -84,7 +84,7 @@ export interface Implementation {
   repository: string;
   commit: string;
   identity: "release" | "development";
-  release: { tag: string; version: string; url: string } | null;
+  release: { tag: string; version: string; url: string | null } | null;
   build_origin: BuildOrigin;
   snapshot_sha256: string;
 }
@@ -118,13 +118,14 @@ export interface Case {
   bytes: number;
   input_sha256: string;
   url: string;
+  film_grain: boolean | null;
 }
 export interface Cell {
   machine_id: string;
   case_id: string;
   threads: number;
   implementation: string;
-  build_id: string;
+  build_id: string | null;
   status: Status;
   n_measured: number;
   n_valid: number;
@@ -169,7 +170,7 @@ export interface Summary {
   methodology_id: string;
   /** Entries in data order. Kept as a list: keys from the data never become object keys. */
   methodology: [string, string | number | boolean | null][];
-  harness: { repository: string; commit: string; snapshot_sha256: string; class: string };
+  harness: { repository: string; commit: string | null; snapshot_sha256: string; class: string };
   aggregation_version: string;
   corpus: { id: string; digest: string; source: string; oracle: string };
   suite: { id: string; cases_expected: number };
@@ -195,7 +196,15 @@ export interface Coverage {
 /** The data breaks the contract. */
 export class DataError extends Error {}
 /** The data is valid for a version or workload kind that this page does not support. */
-export class UnsupportedError extends Error {}
+export class UnsupportedError extends Error {
+  /** "workload": another kind of data. "version": another version of decode data. */
+  constructor(
+    message: string,
+    readonly cause: "version" | "workload" = "version",
+  ) {
+    super(message);
+  }
+}
 
 type Json = Record<string, unknown>;
 
@@ -209,6 +218,14 @@ function str(o: Json, k: string, at: string): string {
   const v = o[k];
   if (typeof v !== "string" || v === "") throw new DataError(`${at}.${k} is not a string.`);
   return v;
+}
+/** Any string, also empty: the schema gives free text fields no minimum length. */
+function text(o: Json, k: string, at: string): string {
+  if (typeof o[k] !== "string") throw new DataError(`${at}.${k} is not a string.`);
+  return o[k] as string;
+}
+function optText(o: Json, k: string, at: string): string | null {
+  return o[k] === null ? null : text(o, k, at);
 }
 function optStr(o: Json, k: string, at: string): string | null {
   return o[k] === null ? null : str(o, k, at);
@@ -266,8 +283,16 @@ function pattern(o: Json, k: string, at: string, re: RegExp): string {
 }
 const commit = /^[0-9a-f]{40}$/;
 const sha256 = /^sha256:[0-9a-f]{64}$/;
-// A relative path inside the dataset: no scheme, no query, no "..", no leading "/".
-const relative = /^(?!.*(?:^|\/)\.\.?(?:\/|$))[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*\/?$/;
+// The schema's relative_path (common.schema.json): no leading "/", no ".." part, no space or "\".
+const relative = /^(?!\/)(?!.*(^|\/)\.\.(\/|$))[^\s\\]+$/;
+/** A relative path that also stays inside its directory after URL parsing ("%2e%2e", schemes). */
+function relPath(o: Json, k: string, at: string): string {
+  const v = pattern(o, k, at, relative);
+  const dir = "https://dataset.invalid/a/b/";
+  if (!new URL(v, dir).href.startsWith(dir))
+    throw new DataError(`${at}.${k} leaves its directory.`);
+  return v;
+}
 const strings = (v: unknown, at: string) => {
   if (typeof v !== "string") throw new DataError(`${at} is not a string.`);
   return v;
@@ -333,7 +358,7 @@ export function parseIndex(raw: unknown): BenchIndex {
         complete: bool(d, "complete", at),
         workload: str(d, "workload", at),
         published_utc: str(d, "published_utc", at),
-        path: pattern(d, "path", at, relative),
+        path: relPath(d, "path", at),
         series: list(
           d,
           "series",
@@ -359,26 +384,52 @@ export function parseIndex(raw: unknown): BenchIndex {
   return { latest_complete: latest, datasets };
 }
 
-export function parseSummary(raw: unknown, expectedId: string): Summary {
+/** The index entry fields that the loaded summary must repeat. */
+type Expected = Pick<IndexEntry, "dataset_id" | "origin" | "complete">;
+
+export function parseSummary(raw: unknown, expected: Expected): Summary {
   const o = obj(raw, "summary");
   schema(o, "summary");
   const kind = str(obj(o.workload, "summary.workload"), "kind", "summary.workload");
-  if (kind !== "decode") throw new UnsupportedError(`The dataset has the workload kind "${kind}".`);
+  if (kind !== "decode") {
+    throw new UnsupportedError(`The dataset has the workload kind "${kind}".`, "workload");
+  }
   const at = "summary";
   const dataset_id = str(o, "dataset_id", at);
-  if (dataset_id !== expectedId) {
-    throw new DataError(`summary.dataset_id "${dataset_id}" is not "${expectedId}".`);
+  if (dataset_id !== expected.dataset_id) {
+    throw new DataError(`summary.dataset_id "${dataset_id}" is not "${expected.dataset_id}".`);
   }
-  const throughput = obj(
-    obj(o.metrics, "summary.metrics").throughput,
-    "summary.metrics.throughput",
-  );
-  if (throughput.unit !== "frames/s") {
-    throw new UnsupportedError("The throughput unit is not frames/s.");
+  if (o.origin !== expected.origin || o.complete !== expected.complete) {
+    throw new DataError("summary.origin or summary.complete differs from the index entry.");
+  }
+  // The page prints these metrics in these units. Other units could mean other numbers.
+  const metrics = obj(o.metrics, "summary.metrics");
+  for (const [name, unit] of [
+    ["throughput", "frames/s"],
+    ["wall_time", "ns"],
+    ["cpu_time", "ns"],
+    ["peak_rss", "bytes"],
+    ["first_frame_latency", "ns"],
+  ]) {
+    if (obj(metrics[name], `summary.metrics.${name}`).unit !== unit) {
+      throw new UnsupportedError(`The unit of the metric ${name} is not ${unit}.`);
+    }
   }
 
   const m = obj(o.methodology, "summary.methodology");
   const methodology_id = str(m, "id", "summary.methodology");
+  // The page and its method text describe exactly this methodology.
+  const method: [string, string][] = [
+    ["id", "decode-cli-wall/1"],
+    ["timing_boundary", "process-wall"],
+    ["film_grain", "apply"],
+    ["output_policy", "decode-discard"],
+  ];
+  for (const [k, v] of method) {
+    if (m[k] !== v) {
+      throw new UnsupportedError(`The dataset uses the methodology ${k} "${String(m[k])}".`);
+    }
+  }
   const methodology = Object.entries(m).map(([k, v]): Summary["methodology"][number] => {
     if (v !== null && !["string", "number", "boolean"].includes(typeof v)) {
       throw new DataError(`summary.methodology.${k} is not a single value.`);
@@ -388,6 +439,9 @@ export function parseSummary(raw: unknown, expectedId: string): Summary {
   if (methodology.length > MAX.small) throw new DataError("summary.methodology is too large.");
 
   const agg = obj(o.aggregation, "summary.aggregation");
+  if (agg.version !== "summary/1") {
+    throw new UnsupportedError(`The dataset uses the aggregation "${String(agg.version)}".`);
+  }
   const h = obj(agg.harness, "summary.aggregation.harness");
   const hat = "summary.aggregation.harness";
   const corpus = obj(o.corpus, "summary.corpus");
@@ -416,19 +470,19 @@ export function parseSummary(raw: unknown, expectedId: string): Summary {
         class: str(x, "class", mat),
         threads: list(x, "threads", mat, (t, tat) => int({ t }, "t", tat), MAX.threads),
         measured_utc: {
-          first: str(time, "first", `${mat}.measured_utc`),
-          last: str(time, "last", `${mat}.measured_utc`),
+          first: optStr(time, "first", `${mat}.measured_utc`),
+          last: optStr(time, "last", `${mat}.measured_utc`),
         },
         fingerprint_digest: pattern(x, "fingerprint_digest", mat, sha256),
         fingerprint: {
           arch: str(fp, "arch", `${mat}.fingerprint`),
           os: {
-            name: str(os, "name", `${mat}.fingerprint.os`),
-            version: str(os, "version", `${mat}.fingerprint.os`),
-            kernel: optStr(os, "kernel", `${mat}.fingerprint.os`),
+            name: text(os, "name", `${mat}.fingerprint.os`),
+            version: optText(os, "version", `${mat}.fingerprint.os`),
+            kernel: optText(os, "kernel", `${mat}.fingerprint.os`),
           },
           cpu: {
-            model: str(cpu, "model", cat),
+            model: optText(cpu, "model", cat),
             physical_cores: optNum(cpu, "physical_cores", cat),
             logical_cores: optNum(cpu, "logical_cores", cat),
             performance_cores: optNum(cpu, "performance_cores", cat),
@@ -440,7 +494,7 @@ export function parseSummary(raw: unknown, expectedId: string): Summary {
           affinity: setting(fp.affinity),
         },
         bundle: {
-          path: pattern(bundle, "path", `${mat}.bundle`, relative),
+          path: relPath(bundle, "path", `${mat}.bundle`),
           sha256: pattern(bundle, "sha256", `${mat}.bundle`, sha256),
           bytes: int(bundle, "bytes", `${mat}.bundle`),
         },
@@ -472,12 +526,12 @@ export function parseSummary(raw: unknown, expectedId: string): Summary {
         release = {
           tag: str(r, "tag", rat),
           version: str(r, "version", rat),
-          url: str(r, "url", rat),
+          url: optStr(r, "url", rat),
         };
       }
       return {
         id: str(x, "id", iat),
-        name: str(x, "name", iat),
+        name: text(x, "name", iat),
         repository: str(x, "repository", iat),
         commit: pattern(x, "commit", iat, commit),
         identity,
@@ -500,7 +554,7 @@ export function parseSummary(raw: unknown, expectedId: string): Summary {
       const cat = `${bat}.configuration`;
       const toolchain = Object.keys(tc).map((k): [string, string] => [
         k,
-        str(tc, k, `${bat}.toolchain`),
+        text(tc, k, `${bat}.toolchain`),
       ]);
       if (toolchain.length > MAX.small) throw new DataError(`${bat}.toolchain is too large.`);
       if (c.pgo !== null) bool(c, "pgo", cat);
@@ -511,15 +565,15 @@ export function parseSummary(raw: unknown, expectedId: string): Summary {
         class: str(x, "class", bat),
         binary_sha256: pattern(x, "binary_sha256", bat, sha256),
         libraries: list(x, "libraries", bat, (l) => l, MAX.small),
-        version_output: optStr(x, "version_output", bat),
-        target: str(x, "target", bat),
+        version_output: optText(x, "version_output", bat),
+        target: text(x, "target", bat),
         toolchain,
         configuration: {
-          summary: str(c, "summary", cat),
+          summary: text(c, "summary", cat),
           arguments: list(c, "arguments", cat, strings, MAX.small),
-          target_cpu: optStr(c, "target_cpu", cat),
+          target_cpu: optText(c, "target_cpu", cat),
           simd: optStr(c, "simd", cat),
-          lto: optStr(c, "lto", cat),
+          lto: optText(c, "lto", cat),
           pgo: c.pgo as boolean | null,
         },
       };
@@ -544,6 +598,7 @@ export function parseSummary(raw: unknown, expectedId: string): Summary {
         bytes: int(x, "bytes", cat),
         input_sha256: pattern(x, "input_sha256", cat, sha256),
         url: str(x, "url", cat),
+        film_grain: x.film_grain === null ? null : bool(x, "film_grain", cat),
       };
     },
     MAX.cases,
@@ -560,7 +615,7 @@ export function parseSummary(raw: unknown, expectedId: string): Summary {
         case_id: str(x, "case_id", cat),
         threads: int(x, "threads", cat),
         implementation: str(x, "implementation", cat),
-        build_id: str(x, "build_id", cat),
+        build_id: optStr(x, "build_id", cat),
         status: oneOf(x, "status", cat, statuses),
         n_measured: int(x, "n_measured", cat),
         n_valid: int(x, "n_valid", cat),
@@ -624,7 +679,7 @@ export function parseSummary(raw: unknown, expectedId: string): Summary {
           aat,
           (e, eat) => {
             const eo = obj(e, eat);
-            str(eo, "reason", eat); // Free text. The page builds its own text from the fields.
+            text(eo, "reason", eat); // Free text. The page builds its own text from the fields.
             return {
               case_id: str(eo, "case_id", eat),
               implementation: str(eo, "implementation", eat),
@@ -650,16 +705,16 @@ export function parseSummary(raw: unknown, expectedId: string): Summary {
     methodology,
     harness: {
       repository: str(h, "repository", hat),
-      commit: pattern(h, "commit", hat, commit),
+      commit: h.commit === null ? null : pattern(h, "commit", hat, commit),
       snapshot_sha256: pattern(h, "snapshot_sha256", hat, sha256),
       class: str(h, "class", hat),
     },
-    aggregation_version: str(agg, "version", "summary.aggregation"),
+    aggregation_version: "summary/1",
     corpus: {
       id: str(corpus, "id", "summary.corpus"),
       digest: pattern(corpus, "digest", "summary.corpus", sha256),
       source: str(corpus, "source", "summary.corpus"),
-      oracle: str(corpus, "oracle", "summary.corpus"),
+      oracle: text(corpus, "oracle", "summary.corpus"),
     },
     suite: {
       id: str(suite, "id", "summary.suite"),
@@ -673,10 +728,10 @@ export function parseSummary(raw: unknown, expectedId: string): Summary {
     speedups,
     aggregates,
     downloads: {
-      manifest: pattern(dl, "manifest", "summary.downloads", relative),
-      csv: pattern(dl, "csv", "summary.downloads", relative),
-      lock: pattern(dl, "lock", "summary.downloads", relative),
-      checksums: pattern(dl, "checksums", "summary.downloads", relative),
+      manifest: relPath(dl, "manifest", "summary.downloads"),
+      csv: relPath(dl, "csv", "summary.downloads"),
+      lock: relPath(dl, "lock", "summary.downloads"),
+      checksums: relPath(dl, "checksums", "summary.downloads"),
     },
     reproduce: {
       repository: str(rp, "repository", "summary.reproduce"),
@@ -730,6 +785,7 @@ function checkReferences(s: Summary) {
     if (!threadsOf.get(c.machine_id)!.includes(c.threads)) {
       throw new DataError(`${at} has a thread budget that its machine does not list.`);
     }
+    if (c.build_id === null) return; // The schema allows it, for example for a cell not run.
     const b = builds.get(c.build_id);
     if (!b || b.implementation !== c.implementation || b.machine_id !== c.machine_id) {
       throw new DataError(`${at} names a build that does not match its machine and decoder.`);
@@ -764,9 +820,10 @@ export const shortCommit = (c: string) => c.slice(0, 12);
 
 /** The compact label of the contract. The build version output is never the label. */
 export function implLabel(i: Implementation): string {
+  const name = i.name || i.id; // The schema allows an empty name.
   return i.identity === "release" && i.release
-    ? `${i.name} ${i.release.version} (${shortCommit(i.commit)})`
-    : `${i.name} ${shortCommit(i.commit)} (development)`;
+    ? `${name} ${i.release.version} (${shortCommit(i.commit)})`
+    : `${name} ${shortCommit(i.commit)} (development)`;
 }
 
 export const buildOriginText: Record<BuildOrigin, string> = {
