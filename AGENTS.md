@@ -7,8 +7,8 @@ This repository is the website for [splot](https://github.com/splotlabs/splot), 
 
 Do not ask the owner to make these decisions again.
 
-- Scope: one English landing page for splot, and a 404 page. No analytics, forms, accounts, CMS,
-  blog, payments, backend, or browser codec demo.
+- Scope: one English landing page for splot, one benchmarks page (`/benchmarks/`), and a 404 page.
+  No analytics, forms, accounts, CMS, blog, payments, backend, or browser codec demo.
 - Production origin: `https://splotlabs.io` (the apex domain, not `www`).
 - Repository: `splotlabs/website`, public, PolyForm Noncommercial 1.0.0.
 - Hosting: Cloudflare Workers Static Assets. Do not use Cloudflare Pages.
@@ -20,10 +20,13 @@ Do not ask the owner to make these decisions again.
 
 - `src/data/site.ts`: links, commands and facts. Edit the copy here first.
 - `src/pages/index.astro`: the landing page. `src/pages/404.astro`: the 404 page.
+  `src/pages/benchmarks.astro`: the benchmarks page.
 - `src/layouts/BaseLayout.astro`: head, navigation, footer.
 - `src/components/`: `Command` (one command with a Copy button) and `CommandPanel`.
 - `src/styles/global.css`: all styles and design tokens.
-- `src/scripts/enhance.ts`: the only browser JavaScript (copy buttons, menu close).
+- `src/scripts/enhance.ts`: browser JavaScript for all pages (copy buttons, menu close).
+- `src/scripts/benchmarks.ts` and `src/scripts/bench-data.ts`: browser JavaScript for the
+  benchmarks page only (data loading, validation, filters, SVG charts).
 - `public/_headers`: response headers for Workers Static Assets, including the
   Content-Security-Policy. The policy allows no inline script and no inline style.
 - `wrangler.jsonc`: assets only. Do not add `main`, bindings, or routes without approval.
@@ -47,8 +50,11 @@ Do not ask the owner to make these decisions again.
   `docs/CONTENT-SOURCES.md`, with the upstream commit.
 - Say "source-available". Do not say "open source".
 - Keep the pre-alpha status visible.
-- Do not add benchmarks, users, testimonials, release dates, binary downloads, or simulated
-  tool output.
+- Do not add users, testimonials, release dates, binary downloads, or simulated tool output.
+- Benchmark results appear only on the benchmarks page, and only from published datasets that the
+  [splotlabs/benchmarks](https://github.com/splotlabs/benchmarks) harness produced. Do not show a
+  number that is not in a published dataset. Synthetic test fixtures stay in `tests/fixtures/` and
+  never appear in production.
 - Treat splot as a read-only reference during website work.
 - If an example misstates a command, correct the example and its source attribution here.
 - If the documented command fails in splot, report the defect in splot. Describe the verified limitation on the website.

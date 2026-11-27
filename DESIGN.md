@@ -57,6 +57,10 @@ System font stack from the SVG. Monospace stack for commands.
 - **Command panel:** a header with "Copy all", then one row for each command.
 - **Command:** one command with a Copy button, for use in cards.
 - **Card:** the same surface as the panel. A colored eyebrow, an `h3`, text, then commands.
+- **Benchmark views** (benchmarks page only): a filter panel with the panel surface, horizontal
+  SVG bar charts and numeric tables. Each chart has a table with the same data; the table is
+  the accessible source. Cyan, violet and pink label the decoders. Pink text marks a failed
+  status. A wide table scrolls inside its own focusable region, never the page.
 
 ## Motion
 

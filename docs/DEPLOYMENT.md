@@ -81,6 +81,39 @@ GitHub Actions runs checks only. It does not deploy. A passed GitHub check does 
 Workers Builds wait, so the build command contains the checks. The browser tests run only in
 GitHub Actions, and the ruleset makes them a condition of the merge.
 
+## Benchmark data origin
+
+The benchmarks page (`/benchmarks/`) reads `index.json` and the `summary.json` file of the
+selected dataset from one data origin in the browser. The
+[splotlabs/benchmarks](https://github.com/splotlabs/benchmarks) harness publishes these files.
+
+Current state: no data origin is configured. `benchmarks.dataBase` in `src/data/site.ts` is
+`null`. The page makes no data request and shows "Results are not published yet."
+
+When a published dataset exists, make these two edits in one pull request:
+
+1. In `src/data/site.ts`, set `benchmarks.dataBase` to the https URL of the directory that
+   contains `index.json`, with a final `/`. Form: `https://<data host>/<path>/`.
+2. In `public/_headers`, add the origin of that URL (scheme and host, without a path) to
+   `connect-src`. Form: `connect-src 'self' https://<data host>`. Do not add other origins.
+
+The test "the data origin is allowed by the served connect-src" in `tests/benchmarks.spec.ts`
+fails when the two edits do not agree, or when `connect-src` allows more than `'self'` while
+`dataBase` is `null`.
+
+The storage must meet these conditions:
+
+- It answers `GET` requests for `index.json` and the dataset files with
+  `Access-Control-Allow-Origin: https://splotlabs.io`. A Worker Preview has a `workers.dev`
+  origin. A Preview shows the load error state unless the storage also allows that origin.
+- It does not need credentials. The page sends requests without cookies (`credentials: "omit"`),
+  so the storage must not require `Access-Control-Allow-Credentials`.
+- It serves JSON with `Content-Type: application/json`.
+- Published dataset files do not change. A new dataset gets a new directory.
+
+The download links (raw bundles, CSV, lock, manifest, checksums) are ordinary links. They need no
+CORS header and no CSP change.
+
 ## Roll back the content
 
 List the versions, then roll back to a known-good version:

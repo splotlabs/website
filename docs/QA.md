@@ -87,6 +87,30 @@ resolver still had a cached negative answer for the new record.
 4. The open mobile menu was translucent, and the text below it showed through.
 5. The command panel blur caused 410 ms of blocking time in the mobile Lighthouse run.
 
+## Benchmarks page (2026-11-27)
+
+Subject: the production build with `benchmarks.dataBase` set to `null`, served by the project
+Wrangler with the real `_headers`. The loaded views use the synthetic fixtures in
+`tests/fixtures/`, served on a same-origin path by Playwright (`page.route`) and selected by a
+test start hook. The fixtures are not in `dist/`.
+
+| Check                                                                                    | Method               | Result       |
+| ---------------------------------------------------------------------------------------- | -------------------- | ------------ |
+| Production state "Results are not published yet.", no request outside the page assets    | Playwright           | Passed       |
+| `connect-src` agrees with `benchmarks.dataBase`                                          | Playwright, headers  | Passed       |
+| The start hook refuses other origins                                                     | Playwright           | Passed       |
+| Filters, URL state, baseline change, failed cells, null metrics, thread scaling, history | Playwright, fixtures | Passed       |
+| Unsupported index, summary and workload versions; load error; invalid data; empty index  | Playwright, fixtures | Passed       |
+| Download links, provenance details, copy action, synthetic and partial banners           | Playwright, fixtures | Passed       |
+| No console errors and no CSP violations                                                  | Playwright           | Passed       |
+| No horizontal overflow at 320, 390, 768 and 1440 px, production and loaded               | Playwright           | Passed       |
+| Automated accessibility (same rules as above), production and loaded, 390 and 1440 px    | axe-core             | 0 violations |
+| Usable without JavaScript                                                                | Playwright           | Passed       |
+| Benchmarks page JavaScript                                                               | gzip size            | 10.9 kB      |
+
+Not run: real published data, a real data origin with CORS, Firefox, Safari, real phones and a
+screen reader session.
+
 ## Brand fidelity
 
 Compared with `docs/assets/hero.svg` at the recorded upstream commit:

@@ -4,8 +4,11 @@ All product claims and commands on the website come from the product repository
 [splotlabs/splot](https://github.com/splotlabs/splot) at commit
 `0616c379f300ccca7afbfcab401444de1c5122b4` (2026-11-27).
 
-The website does not fetch upstream content at build time or at runtime. When the
-README changes, update the copy by hand and update the commit above.
+The website does not fetch upstream content at build time. At runtime, only the benchmarks page
+fetches content: the published datasets of the
+[splotlabs/benchmarks](https://github.com/splotlabs/benchmarks) harness, from the data origin in
+`src/data/site.ts` (`benchmarks.dataBase`). When the README changes, update the copy by hand and
+update the commit above.
 
 Status values:
 
@@ -32,6 +35,30 @@ Status values:
 | "The project reports that the encoder, decoder and validator work end to end…"                                           | `README.md`, "Where it stands."                             | Documented. The website states it as a report from the project. |
 | "Uses outside its permissions, including typical commercial deployments, require a separate agreement…"                  | `LICENSE.md`, license body; `README.md`, "License."         | Documented. README wording as revised in splot PR 1791          |
 | `public/favicon.svg`, `src/brand/og.svg`, `public/og.png`                                                                | Adapted from `docs/assets/hero.svg`                         | Checked against the SVG markup                                  |
+
+## Benchmarks page
+
+The benchmarks page (`src/pages/benchmarks.astro`) makes no performance claim. It shows numbers
+only from a published dataset, without change, and it computes no statistics. No dataset is
+published, so production shows "Results are not published yet." Synthetic test fixtures are in
+`tests/fixtures/` and are not in the build output.
+
+Sources: the Epic [splotlabs/splot#2046](https://github.com/splotlabs/splot/issues/2046) and
+the task [splotlabs/website#7](https://github.com/splotlabs/website/issues/7), read on
+2026-11-27, and the data contract `splotbench.index/1` and `splotbench.summary/1` for the
+[splotlabs/benchmarks](https://github.com/splotlabs/benchmarks) harness (task
+[splotlabs/splot#2049](https://github.com/splotlabs/splot/issues/2049)). On 2026-11-27 the
+contract schemas were not yet on the `main` branch of the benchmarks repository. When they are,
+record the commit here and regenerate the test fixtures from the harness.
+
+| Website content                                                                                                                                                                     | Source                                                                                           | Status                                                              |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------- |
+| "Results are not published yet."                                                                                                                                                    | Epic #2046, "Measurement and presentation contract"; `benchmarks.dataBase` is `null`             | Checked in the build                                                |
+| One wall-clock timing boundary around the decoder command line; measured cases one at a time on each machine; output checked against the reference outside the timed pass           | Epic #2046, "Supported execution environments" and "Measurement and presentation contract"       | Documented                                                          |
+| One physical machine per result; ARM and x86 never combined; 8-bit and 10-bit never mixed in one aggregate; speedups only from matched correct streams, with coverage; no zero bars | Epic #2046, "Measurement and presentation contract"; task #7, "Interaction and comparison views" | Documented. The page code follows it; tested with fixtures          |
+| Source repository and full commit; release only when verified; build origin, configuration, binary SHA-256 and machine; a local build of release source is not an official binary   | Epic #2046, "Exact provenance contract"; data contract, `implementations` and `builds`           | Documented                                                          |
+| Harness, methodology and repeat steps in the benchmarks repository; raw bundles, CSV, campaign lock, manifest and checksums for each dataset                                        | Epic #2046, "Owner decisions and scope"; data contract, `downloads` and `reproduce`              | Documented                                                          |
+| Labels, statuses, banners, units and field names in the interactive views                                                                                                           | Data contract `splotbench.index/1` and `splotbench.summary/1`                                    | Documented. Tested with synthetic fixtures only, not with real data |
 
 The website does not show the licensing email address. It links to the license section of the
 README, which contains the address.
