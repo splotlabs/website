@@ -72,6 +72,9 @@ export interface Machine {
       isa: string[];
     };
     memory_bytes: number | null;
+    /** Execution settings as the harness recorded them, as text, or null. */
+    power: string | null;
+    affinity: string | null;
   };
   bundle: { path: string; sha256: string; bytes: number };
 }
@@ -277,6 +280,10 @@ function schema(o: Json, name: string) {
   if (m[2] !== "1") throw new UnsupportedError(`The ${name} uses the data version "${id}".`);
 }
 
+/** An optional setting of any JSON form, kept as text for display only. */
+const setting = (v: unknown) =>
+  v === null || v === undefined ? null : typeof v === "string" ? v : JSON.stringify(v);
+
 const metricKeys = [
   "frames",
   "wall_ns_median",
@@ -302,9 +309,10 @@ function parseCoverage(v: unknown): Coverage {
     roles_present: roles("roles_present"),
     cells_expected: int(c, "cells_expected", at),
     cells_ok: int(c, "cells_ok", at),
+    // The harness writes only the statuses that occur. A missing status counts 0.
     status_counts: statuses.map((st): [Status, number] => [
       st,
-      int(counts, st, `${at}.status_counts`),
+      counts[st] === undefined ? 0 : int(counts, st, `${at}.status_counts`),
     ]),
   };
 }
@@ -428,6 +436,8 @@ export function parseSummary(raw: unknown, expectedId: string): Summary {
             isa: list(cpu, "isa", cat, strings, MAX.small),
           },
           memory_bytes: optNum(fp, "memory_bytes", `${mat}.fingerprint`),
+          power: setting(fp.power),
+          affinity: setting(fp.affinity),
         },
         bundle: {
           path: pattern(bundle, "path", `${mat}.bundle`, relative),

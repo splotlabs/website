@@ -1,202 +1,113 @@
 {
   "schema": "splotbench.index/1",
-  "latest_complete": "ds-f1f1f1f1f1f10004",
+  "latest_complete": null,
   "datasets": [
     {
-      "dataset_id": "ds-f1f1f1f1f1f10004",
-      "campaign_id": "fixture-campaign-cd2fd5967cfb",
-      "name": "fixture-official",
-      "origin": "official",
-      "complete": true,
-      "workload": "decode",
-      "methodology": "decode-cli-wall/1",
-      "suite": "full",
-      "measured_utc": {
-        "first": "2026-01-01T10:00:00Z",
-        "last": "2026-01-01T12:00:00Z"
-      },
-      "published_utc": "2026-01-04T09:00:00Z",
-      "path": "datasets/ds-f1f1f1f1f1f10004/",
-      "series": [
-        {
-          "machine_id": "fixture-arm-01",
-          "role": "arm64",
-          "series_id": "ser-f1f1f1f1f1f1a064"
-        },
-        {
-          "machine_id": "fixture-x86-01",
-          "role": "x86-64",
-          "series_id": "ser-f1f1f1f1f1f10086"
-        }
-      ]
-    },
-    {
-      "dataset_id": "ds-f1f1f1f1f1f10003",
-      "campaign_id": "fixture-campaign-98e3cb2165fe",
-      "name": "fixture-full",
+      "dataset_id": "ds-0475694ea443e30e",
+      "campaign_id": "fixture-viewer-a9a96b8b0b7e",
+      "name": "fixture-viewer",
       "origin": "synthetic",
       "complete": true,
       "workload": "decode",
       "methodology": "decode-cli-wall/1",
       "suite": "full",
       "measured_utc": {
-        "first": "2026-01-01T10:00:00Z",
-        "last": "2026-01-01T12:00:00Z"
+        "first": "2026-12-01T10:01:00Z",
+        "last": "2026-12-01T11:12:00Z"
       },
-      "published_utc": "2026-01-03T09:00:00Z",
-      "path": "datasets/ds-f1f1f1f1f1f10003/",
+      "path": "datasets/ds-0475694ea443e30e/",
       "series": [
         {
           "machine_id": "fixture-arm-01",
           "role": "arm64",
-          "series_id": "ser-f1f1f1f1f1f1a064"
+          "series_id": "ser-8165590117e66b88"
         },
         {
           "machine_id": "fixture-x86-01",
           "role": "x86-64",
-          "series_id": "ser-f1f1f1f1f1f10086"
+          "series_id": "ser-99404c21bdbdaa3a"
         }
-      ]
+      ],
+      "published_utc": "2026-12-02T09:00:00Z"
     },
     {
-      "dataset_id": "ds-f1f1f1f1f1f10002",
-      "campaign_id": "fixture-campaign-f7ded080db30",
-      "name": "fixture-partial",
+      "dataset_id": "ds-865160fe31c9ef8c",
+      "campaign_id": "fixture-viewer-ce3b5f98be2d",
+      "name": "fixture-viewer",
+      "origin": "synthetic",
+      "complete": true,
+      "workload": "decode",
+      "methodology": "decode-cli-wall/1",
+      "suite": "full",
+      "measured_utc": {
+        "first": "2026-12-08T10:01:00Z",
+        "last": "2026-12-08T11:12:00Z"
+      },
+      "path": "datasets/ds-865160fe31c9ef8c/",
+      "series": [
+        {
+          "machine_id": "fixture-arm-01",
+          "role": "arm64",
+          "series_id": "ser-8165590117e66b88"
+        },
+        {
+          "machine_id": "fixture-x86-01",
+          "role": "x86-64",
+          "series_id": "ser-99404c21bdbdaa3a"
+        }
+      ],
+      "published_utc": "2026-12-09T09:00:00Z"
+    },
+    {
+      "dataset_id": "ds-a76ba93f86bf8e9a",
+      "campaign_id": "fixture-viewer-a9a96b8b0b7e",
+      "name": "fixture-viewer",
+      "origin": "synthetic",
+      "complete": true,
+      "workload": "decode",
+      "methodology": "decode-cli-wall/1",
+      "suite": "full",
+      "measured_utc": {
+        "first": "2026-12-15T10:01:00Z",
+        "last": "2026-12-15T11:12:00Z"
+      },
+      "path": "datasets/ds-a76ba93f86bf8e9a/",
+      "series": [
+        {
+          "machine_id": "fixture-arm-01",
+          "role": "arm64",
+          "series_id": "ser-8165590117e66b88"
+        },
+        {
+          "machine_id": "fixture-x86-01",
+          "role": "x86-64",
+          "series_id": "ser-454e8b19f1f9fd79"
+        }
+      ],
+      "published_utc": "2026-12-16T09:00:00Z"
+    },
+    {
+      "dataset_id": "ds-fa7c308628a9bc26",
+      "campaign_id": "fixture-viewer-a9a96b8b0b7e",
+      "name": "fixture-viewer",
       "origin": "synthetic",
       "complete": false,
       "workload": "decode",
       "methodology": "decode-cli-wall/1",
       "suite": "full",
       "measured_utc": {
-        "first": "2026-01-01T10:00:00Z",
-        "last": "2026-01-01T12:00:00Z"
+        "first": "2026-12-22T10:01:00Z",
+        "last": "2026-12-22T10:23:00Z"
       },
-      "published_utc": "2026-01-02T09:00:00Z",
-      "path": "datasets/ds-f1f1f1f1f1f10002/",
+      "path": "datasets/ds-fa7c308628a9bc26/",
       "series": [
-        {
-          "machine_id": "fixture-arm-01",
-          "role": "arm64",
-          "series_id": "ser-f1f1f1f1f1f1a064"
-        },
         {
           "machine_id": "fixture-x86-01",
           "role": "x86-64",
-          "series_id": "ser-f1f1f1f1f1f10086"
+          "series_id": "ser-99404c21bdbdaa3a"
         }
-      ]
-    },
-    {
-      "dataset_id": "ds-f1f1f1f1f1f10001",
-      "campaign_id": "fixture-campaign-70909071361d",
-      "name": "fixture-older",
-      "origin": "synthetic",
-      "complete": true,
-      "workload": "decode",
-      "methodology": "decode-cli-wall/1",
-      "suite": "full",
-      "measured_utc": {
-        "first": "2026-01-01T10:00:00Z",
-        "last": "2026-01-01T12:00:00Z"
-      },
-      "published_utc": "2026-01-01T09:00:00Z",
-      "path": "datasets/ds-f1f1f1f1f1f10001/",
-      "series": [
-        {
-          "machine_id": "fixture-arm-01",
-          "role": "arm64",
-          "series_id": "ser-f1f1f1f1f1f1a064"
-        },
-        {
-          "machine_id": "fixture-x86-01",
-          "role": "x86-64",
-          "series_id": "ser-f1f1f1f1f1f10086"
-        }
-      ]
-    },
-    {
-      "dataset_id": "ds-f1f1f1f1f1f10005",
-      "campaign_id": "fixture-campaign-1b061ede76c6",
-      "name": "fixture-future",
-      "origin": "synthetic",
-      "complete": true,
-      "workload": "decode",
-      "methodology": "decode-cli-wall/1",
-      "suite": "full",
-      "measured_utc": {
-        "first": "2026-01-01T10:00:00Z",
-        "last": "2026-01-01T12:00:00Z"
-      },
-      "published_utc": "2025-12-05T09:00:00Z",
-      "path": "datasets/ds-f1f1f1f1f1f10005/",
-      "series": [
-        {
-          "machine_id": "fixture-arm-01",
-          "role": "arm64",
-          "series_id": "ser-f1f1f1f1f1f1a064"
-        },
-        {
-          "machine_id": "fixture-x86-01",
-          "role": "x86-64",
-          "series_id": "ser-f1f1f1f1f1f10086"
-        }
-      ]
-    },
-    {
-      "dataset_id": "ds-f1f1f1f1f1f10006",
-      "campaign_id": "fixture-campaign-c043591260af",
-      "name": "fixture-encode",
-      "origin": "synthetic",
-      "complete": true,
-      "workload": "encode",
-      "methodology": "decode-cli-wall/1",
-      "suite": "full",
-      "measured_utc": {
-        "first": "2026-01-01T10:00:00Z",
-        "last": "2026-01-01T12:00:00Z"
-      },
-      "published_utc": "2025-12-06T09:00:00Z",
-      "path": "datasets/ds-f1f1f1f1f1f10006/",
-      "series": [
-        {
-          "machine_id": "fixture-arm-01",
-          "role": "arm64",
-          "series_id": "ser-f1f1f1f1f1f1a064"
-        },
-        {
-          "machine_id": "fixture-x86-01",
-          "role": "x86-64",
-          "series_id": "ser-f1f1f1f1f1f10086"
-        }
-      ]
-    },
-    {
-      "dataset_id": "ds-f1f1f1f1f1f10007",
-      "campaign_id": "fixture-campaign-774618f0bdf9",
-      "name": "fixture-broken",
-      "origin": "synthetic",
-      "complete": true,
-      "workload": "decode",
-      "methodology": "decode-cli-wall/1",
-      "suite": "full",
-      "measured_utc": {
-        "first": "2026-01-01T10:00:00Z",
-        "last": "2026-01-01T12:00:00Z"
-      },
-      "published_utc": "2025-12-07T09:00:00Z",
-      "path": "datasets/ds-f1f1f1f1f1f10007/",
-      "series": [
-        {
-          "machine_id": "fixture-arm-01",
-          "role": "arm64",
-          "series_id": "ser-f1f1f1f1f1f1a064"
-        },
-        {
-          "machine_id": "fixture-x86-01",
-          "role": "x86-64",
-          "series_id": "ser-f1f1f1f1f1f10086"
-        }
-      ]
+      ],
+      "published_utc": "2026-12-23T09:00:00Z"
     }
   ]
 }

@@ -5,21 +5,38 @@ import { fileURLToPath } from "node:url";
 import { benchmarks } from "../src/data/site";
 
 // The tests never use the real network. Every request outside the local server is aborted,
-// and the configured data origin is answered from the synthetic fixtures in tests/fixtures/.
-// Like the real raw file host, the mock serves JSON as text/plain with an open CORS header.
+// and the configured data origin is answered from tests/fixtures/, which the benchmarks harness
+// generated (see tests/fixtures/README.md). Like the raw file host, the mock serves JSON as
+// text/plain with an open CORS header. States that the harness cannot produce (official data,
+// other origins, invalid data) are in-memory changes of the generated files.
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Json = Record<string, any>;
+
 const fixtures = new URL("./fixtures/", import.meta.url);
 const origin = "http://127.0.0.1:8787";
 const base = benchmarks.dataBase;
-const full = "/benchmarks/?dataset=ds-f1f1f1f1f1f10003";
-const summary = (id: string) =>
-  JSON.parse(readFileSync(new URL(`main/datasets/${id}/summary.json`, fixtures), "utf8"));
-const commits = Object.fromEntries(
-  summary("ds-f1f1f1f1f1f10003").implementations.map((i: { id: string; commit: string }) => [
-    i.id,
-    i.commit,
-  ]),
-) as Record<string, string>;
 const cors = { "access-control-allow-origin": "*" };
+const read = (rel: string): Json => JSON.parse(readFileSync(new URL(rel, fixtures), "utf8"));
+const indexJson = () => read("main/index.json");
+const summary = (id: string) => read(`main/datasets/${id}/summary.json`);
+
+// The generated datasets, in publication order.
+const [DS1, DS2, DS3, DS4] = indexJson().datasets.map((d: Json) => d.dataset_id) as string[];
+const ARM = "fixture-arm-01";
+const X86 = "fixture-x86-01";
+const full = `/benchmarks/?dataset=${DS1}`;
+const s1 = summary(DS1);
+const impl = (id: string, s = s1) => s.implementations.find((i: Json) => i.id === id);
+const short = (id: string, s = s1) => impl(id, s).commit.slice(0, 12);
+const label = (id: string, s = s1) => {
+  const i = impl(id, s);
+  return i.release
+    ? `${i.name} ${i.release.version} (${short(id, s)})`
+    : `${i.name} ${short(id, s)} (development)`;
+};
+const caseName = (id: string, s = s1) => s.cases.find((c: Json) => c.id === id).name;
+const two = (v: number) => `${v.toFixed(2)}×`;
 
 test.beforeEach(async ({ page }) => {
   await page.route(
@@ -29,7 +46,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 /** Answers the data origin from tests/fixtures/<scenario>/. */
-async function withData(page: Page, scenario: string) {
+async function withData(page: Page, scenario = "main") {
   await page.route(`${base}**`, async (route) => {
     const rel = route.request().url().slice(base.length);
     const file = fileURLToPath(new URL(`${scenario}/${rel}`, fixtures));
@@ -40,23 +57,32 @@ async function withData(page: Page, scenario: string) {
     }
   });
 }
-
-type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
-const full3 = "ds-f1f1f1f1f1f10003";
-
-/** Answers one data file with a changed copy of a fixture. Register after withData. */
+/** Answers one data file with the given body. Register it after withData. */
 async function serve(page: Page, rel: string, body: string) {
   await page.route(`${base}${rel}`, (route) =>
     route.fulfill({ body, contentType: "text/plain; charset=utf-8", headers: cors }),
   );
 }
-async function serveSummary(page: Page, change: (s: Json) => void, id = full3) {
+/** Serves a changed copy of a generated summary. */
+async function serveSummary(page: Page, change: (s: Json) => void, id = DS1) {
   const s = summary(id);
   change(s);
   await serve(page, `datasets/${id}/summary.json`, JSON.stringify(s));
 }
-const mainIndex = () =>
-  JSON.parse(readFileSync(new URL("main/index.json", fixtures), "utf8")) as Json;
+/** Serves a changed copy of the generated index. */
+async function serveIndex(page: Page, change: (i: Json) => void) {
+  const index = indexJson();
+  change(index);
+  await serve(page, "index.json", JSON.stringify(index));
+}
+/** The official path: DS1 becomes official and the promoted complete dataset. */
+async function promoteDs1(page: Page) {
+  await serveIndex(page, (i) => {
+    i.datasets[0].origin = "official";
+    i.latest_complete = DS1;
+  });
+  await serveSummary(page, (s) => (s.origin = "official"));
+}
 
 function watchProblems(page: Page) {
   const problems: string[] = [];
@@ -67,6 +93,15 @@ function watchProblems(page: Page) {
 }
 
 const status = (page: Page) => page.locator("#bench-status");
+const statusWords: Record<string, string> = {
+  ok: "ok",
+  incorrect: "incorrect output",
+  unsupported: "unsupported",
+  timeout: "timeout",
+  error: "error",
+  interrupted: "interrupted",
+  "not-run": "not run",
+};
 
 test("production: an empty index shows that results are not published", async ({ page }) => {
   const problems = watchProblems(page);
@@ -87,7 +122,6 @@ test("production: an empty index shows that results are not published", async ({
     benchmarks.repo,
   );
   await page.waitForLoadState("networkidle");
-  // Page assets, and one data request: the index.
   for (const url of requests.map((u) => new URL(u)).filter((u) => u.origin === origin)) {
     expect(url.pathname).toMatch(/^\/(benchmarks\/|_astro\/[^/]+|favicon\.svg)$/);
   }
@@ -129,132 +163,212 @@ test("the CSP allows the data base and blocks other paths of the host", async ({
   expect(result.blocked).toContain(result.sibling);
 });
 
-test("loaded view: default dataset, filters and URL state", async ({ page }) => {
+test("without latest_complete, the newest dataset is the default, with coverage", async ({
+  page,
+}) => {
   const problems = watchProblems(page);
-  await withData(page, "main");
+  await withData(page);
   await page.goto("/benchmarks/");
-  // latest_complete is the default. Its origin is official, so it has no origin banner.
-  await expect(page.locator("#f-dataset")).toHaveValue("ds-f1f1f1f1f1f10004");
+  // The generated index has no promoted dataset. DS4 is the newest, and it is partial.
+  await expect(page.locator("#f-dataset")).toHaveValue(DS4);
+  await expect(page.locator('[data-banner="note"]')).toContainText(
+    "No complete official dataset is marked as current.",
+  );
+  const banner = page.locator('[data-banner="partial"]');
+  const cov = summary(DS4).coverage;
+  const missing = cov.roles_expected.filter((r: string) => !cov.roles_present.includes(r));
+  await expect(banner).toContainText(
+    `No results exist for the expected machine roles ${missing.join(", ")}`,
+  );
+  await expect(banner).toContainText(`Of ${cov.cells_expected} expected results:`);
+  for (const [st, n] of Object.entries(cov.status_counts)) {
+    await expect(banner).toContainText(`${n} ${statusWords[st]}`);
+  }
+  await expect(banner).toContainText(`${X86}: run interrupted.`);
+  await expect(page.locator("#f-machine option")).toHaveCount(1);
+  await expect(
+    page.locator("#view-throughput tbody td", { hasText: "Interrupted" }).first(),
+  ).toBeVisible();
+  expect(problems).toEqual([]);
+});
+
+test("official data: the promoted dataset is the default, without a banner", async ({ page }) => {
+  await withData(page);
+  await promoteDs1(page);
+  await page.goto("/benchmarks/");
+  await expect(page.locator("#f-dataset")).toHaveValue(DS1);
   await expect(page.locator("#view-throughput")).toBeVisible();
   await expect(page.locator('[data-banner="origin"]')).toHaveCount(0);
-  await expect(page).toHaveURL(/dataset=ds-f1f1f1f1f1f10004/);
-
-  await page.locator("#f-dataset").selectOption("ds-f1f1f1f1f1f10003");
+  await expect(page.locator('[data-banner="note"]')).toHaveCount(0);
+  await expect(page).toHaveURL(new RegExp(`dataset=${DS1}`));
+  await page.locator("#f-dataset").selectOption(DS2);
   await expect(page.locator('[data-banner="origin"]')).toContainText("Synthetic test data.");
-  await expect(page.locator("#f-machine option")).toHaveText([
-    "Fixture ARM CPU · FixtureOS 1.0 · aarch64 (fixture-arm-01)",
-    "Fixture x86 CPU · FixtureOS 1.0 · x86_64 (fixture-x86-01)",
-  ]);
-  await page.locator("#f-machine").selectOption("fixture-x86-01");
+});
+
+test("loaded view: filters and URL state", async ({ page }) => {
+  const problems = watchProblems(page);
+  await withData(page);
+  await page.goto(full);
+  await expect(page.locator("#f-dataset")).toHaveValue(DS1);
+  await expect(page.locator('[data-banner="origin"]')).toContainText("Synthetic test data.");
+  await expect(page.locator("#f-machine option")).toHaveText(
+    s1.machines.map(
+      (m: Json) =>
+        `${m.fingerprint.cpu.model} · ${m.fingerprint.os.name} ${m.fingerprint.os.version} · ${m.fingerprint.arch} (${m.machine_id})`,
+    ),
+  );
+  await page.locator("#f-machine").selectOption(X86);
   await page.locator("#f-depth").selectOption("10");
-  await page.locator("#f-threads").selectOption("8");
-  await page.locator("#f-q").fill("1280");
+  await page.locator("#f-threads").selectOption("4");
+  await page.locator("#f-q").fill("720");
   await expect(page.locator("#f-q")).toBeFocused();
-  const rows = page.locator("#view-throughput tbody th");
-  await expect(rows).toHaveCount(1);
-  await expect(rows.first()).toContainText("fixture_1280x720_10bit_420_130f.ivf");
-  const query = new URL(page.url()).searchParams;
-  expect(Object.fromEntries(query)).toMatchObject({
-    dataset: "ds-f1f1f1f1f1f10003",
-    machine: "fixture-x86-01",
-    depth: "10",
-    threads: "8",
-    q: "1280",
-  });
+  const groups = page.locator("#view-throughput tbody th");
+  await expect(groups).toHaveCount(1);
+  await expect(groups.first()).toContainText(caseName("example-720p-10bit"));
+  await expect(page).toHaveURL(/q=720/);
+  const query = Object.fromEntries(new URL(page.url()).searchParams);
+  expect(query).toMatchObject({ dataset: DS1, machine: X86, depth: "10", threads: "4", q: "720" });
 
   // The same link reproduces the view.
   await page.goto(page.url());
-  await expect(page.locator("#f-machine")).toHaveValue("fixture-x86-01");
+  await expect(page.locator("#f-machine")).toHaveValue(X86);
   await expect(page.locator("#f-depth")).toHaveValue("10");
-  await expect(page.locator("#f-threads")).toHaveValue("8");
-  await expect(page.locator("#f-q")).toHaveValue("1280");
-  await expect(rows).toHaveCount(1);
+  await expect(page.locator("#f-threads")).toHaveValue("4");
+  await expect(page.locator("#f-q")).toHaveValue("720");
+  await expect(groups).toHaveCount(1);
 
-  // A decoder can be removed from the view.
-  await page.getByRole("checkbox", { name: /^fixture-c/ }).uncheck();
+  await page.getByRole("checkbox", { name: label("fixture-c") }).uncheck();
   await expect(page).toHaveURL(/decoders=fixture-a%2Cfixture-b/);
   await expect(page.locator("#view-throughput tbody tr")).toHaveCount(2);
   expect(problems).toEqual([]);
 });
 
 test("baseline change uses the speedups and aggregates of the dataset", async ({ page }) => {
-  await withData(page, "main");
-  await page.goto(`${full}&machine=fixture-arm-01&threads=1&depth=10&baseline=fixture-c`);
+  await withData(page);
+  await page.goto(`${full}&machine=${ARM}&threads=1&depth=10&baseline=fixture-a`);
   const speedup = page.locator("#view-speedup");
-  await expect(speedup.locator("thead th")).toHaveText(["Stream", /^fixture-a/, /^fixture-b/]);
-  await page.locator("#f-baseline").selectOption("fixture-b");
-  await expect(page).toHaveURL(/baseline=fixture-b/);
-  await expect(speedup.locator("thead th")).toHaveText(["Stream", /^fixture-a/, /^fixture-c/]);
+  await expect(speedup.locator("thead th")).toHaveText([
+    "Stream",
+    label("fixture-b"),
+    label("fixture-c"),
+  ]);
+  await page.locator("#f-baseline").selectOption("fixture-c");
+  await expect(page).toHaveURL(/baseline=fixture-c/);
+  await expect(speedup.locator("thead th")).toHaveText([
+    "Stream",
+    label("fixture-a"),
+    label("fixture-b"),
+  ]);
+
+  const agg = s1.aggregates.find(
+    (a: Json) =>
+      a.machine_id === ARM &&
+      a.threads === 1 &&
+      a.bit_depth === 10 &&
+      a.implementation === "fixture-a" &&
+      a.baseline === "fixture-c",
+  );
   const first = speedup.locator(".aggregates > li").first();
-  await expect(first).toContainText("geometric mean 1.25×, 1 of 2 streams matched.");
   await expect(first).toContainText(
-    "Excluded: fixture_1920x1080_10bit_420_130f.ivf (fixture-b: unsupported)",
+    `geometric mean ${two(agg.geomean_ratio)}, ${agg.n_matched} of ${agg.n_expected} streams matched.`,
   );
-  await expect(speedup.locator("tbody tr").first()).toContainText(
-    `Not comparable: fixture-b 1.2.3 (${commits["fixture-b"].slice(0, 12)}): Unsupported`,
+  for (const x of agg.excluded) {
+    await expect(first).toContainText(`Excluded: ${caseName(x.case_id)} (${x.reason})`);
+  }
+  const failed = s1.cells.find(
+    (c: Json) => c.machine_id === ARM && c.threads === 1 && c.status === "unsupported",
   );
-  await expect(speedup.locator("tbody tr").nth(1)).toContainText("1.25×");
+  const row = speedup.locator("tbody tr", { hasText: caseName(failed.case_id) });
+  await expect(row).toContainText(`Not comparable: ${label(failed.implementation)}: Unsupported`);
+  const ratio = s1.speedups.find(
+    (r: Json) =>
+      r.machine_id === ARM &&
+      r.threads === 1 &&
+      r.case_id === "example-1080p-10bit" &&
+      r.implementation === "fixture-a" &&
+      r.baseline === "fixture-c",
+  ).ratio;
+  await expect(
+    speedup.locator("tbody tr", { hasText: caseName("example-1080p-10bit") }),
+  ).toContainText(two(ratio));
 });
 
 test("a failed cell is a labelled status, not a zero bar", async ({ page }) => {
-  await withData(page, "main");
-  await page.goto(`${full}&machine=fixture-arm-01&threads=1&depth=10`);
+  await withData(page);
+  await page.goto(`${full}&machine=${ARM}&threads=1&depth=10`);
   const view = page.locator("#view-throughput");
-  const row = view.locator("tbody tr", { hasText: /fixture-b 1\.2\.3/ }).first();
+  const body = view.locator("tbody", { hasText: caseName("example-720p-10bit") });
+  const row = body.locator("tr", { hasText: label("fixture-c") });
   await expect(row.locator("td").nth(1)).toHaveText("Unsupported");
   await expect(row.locator("td").nth(2)).toHaveText("not measured");
+  await expect(row.locator("td")).toHaveCount(3);
   await expect(view.locator(".chart text.st")).toHaveText(["Unsupported"]);
-  // Two streams and three decoders, one of them failed: five bars.
-  await expect(view.locator(".chart rect.fill")).toHaveCount(5);
-  // First-frame latency is null on this machine, so the column is absent.
+  const ok = s1.cells.filter(
+    (c: Json) =>
+      c.machine_id === ARM && c.threads === 1 && c.status === "ok" && c.case_id.endsWith("10bit"),
+  );
+  await expect(view.locator(".chart rect.fill")).toHaveCount(ok.length);
   await expect(view.locator("thead th", { hasText: "First-frame latency" })).toHaveCount(0);
 
-  await page.locator("#f-machine").selectOption("fixture-x86-01");
-  await expect(view.locator("thead th", { hasText: "First-frame latency" })).toHaveCount(1);
-  await expect(view.locator("tbody td", { hasText: "12.0 ms" }).first()).toBeVisible();
+  await page.locator("#f-threads").selectOption("4");
   await expect(view.locator("tbody td", { hasText: "Incorrect output" })).toHaveCount(1);
+  // CPU time is null on the x86 machine.
+  await page.locator("#f-machine").selectOption(X86);
+  await expect(view.locator("tbody tr").first().locator("td").nth(6)).toHaveText("not measured");
 });
 
-test("thread scaling shows each thread budget", async ({ page }) => {
-  await withData(page, "main");
-  await page.goto(`${full}&machine=fixture-arm-01&depth=8&scale=fixture-a`);
+test("first-frame latency is shown only when it has a value", async ({ page }) => {
+  await withData(page);
+  const ns = 12_500_000;
+  await serveSummary(page, (s) => {
+    s.cells.find(
+      (c: Json) => c.machine_id === X86 && c.status === "ok" && c.threads === 1,
+    ).first_frame_latency_ns = ns;
+  });
+  await page.goto(`${full}&machine=${X86}&threads=1`);
+  const view = page.locator("#view-throughput");
+  await expect(view.locator("thead th", { hasText: "First-frame latency" })).toHaveCount(1);
+  await expect(view.locator("tbody td", { hasText: `${(ns / 1e6).toFixed(1)} ms` })).toHaveCount(1);
+});
+
+test("thread scaling shows each requested thread budget", async ({ page }) => {
+  await withData(page);
+  await page.goto(`${full}&machine=${ARM}&depth=8&scale=fixture-a`);
   const view = page.locator("#view-scaling");
   await expect(view.locator("thead th")).toHaveText([
     "Stream",
     "1 requested thread",
     "4 requested threads",
   ]);
-  await expect(view.locator("tbody tr").first()).toContainText("3.50× against 1 thread");
-});
-
-test("partial and synthetic datasets carry banners", async ({ page }) => {
-  await withData(page, "main");
-  await page.goto("/benchmarks/?dataset=ds-f1f1f1f1f1f10002&machine=fixture-arm-01&threads=4");
-  await expect(page.locator('[data-banner="partial"]')).toContainText("Incomplete dataset.");
-  await expect(page.locator('[data-banner="partial"]')).toContainText(
-    "fixture-arm-01: run interrupted.",
+  const cell = s1.cells.find(
+    (c: Json) =>
+      c.machine_id === ARM &&
+      c.case_id === "example-1080p-8bit" &&
+      c.threads === 4 &&
+      c.implementation === "fixture-a",
   );
-  await expect(page.locator('[data-banner="origin"]')).toContainText("Synthetic test data.");
-  await expect(
-    page.locator("#view-throughput tbody td", { hasText: "Not run" }).first(),
-  ).toBeVisible();
+  await expect(view.locator("tbody tr", { hasText: caseName("example-1080p-8bit") })).toContainText(
+    `${two(cell.scaling_vs_1t)} against 1 thread`,
+  );
 });
 
 test("unsupported data versions and kinds have their own state", async ({ page }) => {
-  await withData(page, "main");
-  await page.goto("/benchmarks/?dataset=ds-f1f1f1f1f1f10005");
+  await withData(page);
+  await serveSummary(page, (s) => (s.schema = "splotbench.summary/2"), DS2);
+  await serveSummary(page, (s) => (s.workload.kind = "encode"), DS3);
+  await page.goto(`/benchmarks/?dataset=${DS2}`);
   await expect(status(page)).toHaveAttribute("data-state", "unsupported");
   await expect(status(page)).toContainText("splotbench.summary/2");
-  await page.locator("#f-dataset").selectOption("ds-f1f1f1f1f1f10006");
+  await page.locator("#f-dataset").selectOption(DS3);
   await expect(status(page)).toContainText('the workload kind "encode"');
-  // The reader can go back to a supported dataset.
-  await page.locator("#f-dataset").selectOption("ds-f1f1f1f1f1f10003");
+  await page.locator("#f-dataset").selectOption(DS1);
   await expect(status(page)).toBeHidden();
   await expect(page.locator("#view-throughput")).toBeVisible();
 });
 
 test("an unsupported index version has its own state", async ({ page }) => {
-  await withData(page, "future");
+  await withData(page);
+  await serveIndex(page, (i) => (i.schema = "splotbench.index/2"));
   await page.goto("/benchmarks/");
   await expect(status(page)).toHaveAttribute("data-state", "unsupported");
   await expect(status(page)).toContainText("splotbench.index/2");
@@ -274,36 +388,29 @@ for (const [name, reply, message] of [
   });
 }
 
-test("a missing file and invalid data show the error state", async ({ page }) => {
+test("a missing file shows the error state", async ({ page }) => {
   await withData(page, "missing");
   await page.goto("/benchmarks/");
   await expect(status(page)).toHaveAttribute("data-state", "error");
   await expect(status(page)).toContainText("HTTP 404");
-
-  await withData(page, "main");
-  await page.goto("/benchmarks/?dataset=ds-f1f1f1f1f1f10007");
-  await expect(status(page)).toHaveAttribute("data-state", "error");
-  await expect(status(page)).toContainText('summary.cells[0].status has the unknown value "fast"');
-  await expect(page.locator("#view-throughput")).toHaveCount(0);
 });
 
 test("downloads resolve from the dataset metadata", async ({ page }) => {
-  await withData(page, "main");
+  await withData(page);
+  await serveSummary(page, (s) => (s.corpus.source = "file:///fixtures/corpus"));
   await page.goto(full);
-  const dir = `${base}datasets/ds-f1f1f1f1f1f10003/`;
+  const dir = `${base}datasets/${DS1}/`;
   const files = page.locator("#view-downloads");
-  const expected: [string | RegExp, string][] = [
-    ...summary("ds-f1f1f1f1f1f10003").machines.map(
-      (m: { machine_id: string; role: string; bundle: { path: string } }): [string, string] => [
-        `Raw bundle: ${m.machine_id} (${m.role})`,
-        `${dir}${m.bundle.path}`,
-      ],
-    ),
-    ["Summary as CSV", `${dir}summary.csv`],
-    ["Campaign lock", `${dir}lock.json`],
-    ["Manifest", `${dir}manifest.json`],
-    ["Checksums (SHA-256)", `${dir}SHA256SUMS`],
-    ["Reproduction instructions", "https://example.com/fixtures/benchmarks/METHODOLOGY.md"],
+  const expected: [string, string][] = [
+    ...s1.machines.map((m: Json): [string, string] => [
+      `Raw bundle: ${m.machine_id} (${m.role})`,
+      `${dir}${m.bundle.path}`,
+    ]),
+    ["Summary as CSV", `${dir}${s1.downloads.csv}`],
+    ["Campaign lock", `${dir}${s1.downloads.lock}`],
+    ["Manifest", `${dir}${s1.downloads.manifest}`],
+    ["Checksums (SHA-256)", `${dir}${s1.downloads.checksums}`],
+    ["Reproduction instructions", s1.reproduce.instructions],
   ];
   for (const [name, href] of expected) {
     await expect(files.getByRole("link", { name, exact: true })).toHaveAttribute("href", href);
@@ -315,88 +422,101 @@ test("downloads resolve from the dataset metadata", async ({ page }) => {
 
 test("provenance: labels, details and copy", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-  await withData(page, "main");
-  await page.goto(`${full}&machine=fixture-arm-01&threads=1&depth=8`);
-  const a = `fixture-a ${commits["fixture-a"].slice(0, 12)} (development)`;
-  const b = `fixture-b 1.2.3 (${commits["fixture-b"].slice(0, 12)})`;
+  await withData(page);
+  // The generator builds every decoder from source. An upstream release asset is an edit.
+  await serveSummary(page, (s) => (impl("fixture-c", s).build_origin = "upstream-release-asset"));
+  await page.goto(`${full}&machine=${ARM}&threads=1&depth=8`);
+  const a = label("fixture-a");
+  const b = label("fixture-b");
   const checks = page.locator(".checks label");
-  await expect(checks).toHaveText([a, b, /^fixture-c 2\.0\.0/]);
-  // The stale version output is never the label.
-  await expect(checks.first()).not.toContainText("1.0.0");
+  await expect(checks).toHaveText([a, b, label("fixture-c")]);
+  const buildA = s1.builds.find((x: Json) => x.implementation === "fixture-a");
+  await expect(checks.first()).not.toContainText(buildA.version_output);
 
   await page.locator("#view-throughput tbody").first().getByRole("link", { name: b }).click();
   const details = page.locator("details.prov[open]", {
     has: page.locator("summary", { hasText: b }),
   });
   await expect(details).toBeVisible();
-  await expect(details).toContainText(commits["fixture-b"]);
+  await expect(details).toContainText(impl("fixture-b").commit);
   await expect(details).toContainText(
     "Built by the harness from the release source. Not an upstream binary.",
   );
-  await expect(details.getByRole("link", { name: /releases\/v1\.2\.3$/ })).toBeVisible();
-  const sha = summary("ds-f1f1f1f1f1f10003").builds.find(
-    (x: { implementation: string; machine_id: string }) =>
-      x.implementation === "fixture-b" && x.machine_id === "fixture-arm-01",
+  await expect(details.getByRole("link", { name: impl("fixture-b").release.url })).toBeVisible();
+  const sha = s1.builds.find(
+    (x: Json) => x.implementation === "fixture-b" && x.machine_id === ARM,
   ).binary_sha256;
   await expect(details).toContainText(sha);
   await details.getByRole("button", { name: `Copy the provenance of ${b}` }).click();
   const copied = await page.evaluate(() => navigator.clipboard.readText());
-  expect(copied).toContain(`Commit: ${commits["fixture-b"]}`);
+  expect(copied).toContain(`Commit: ${impl("fixture-b").commit}`);
   expect(copied).toContain(`Binary SHA-256: ${sha}`);
   expect(copied).toContain("Machine: Fixture ARM CPU");
 
   const c = page.locator("details.prov", {
-    has: page.locator("summary", { hasText: /^fixture-c/ }),
+    has: page.locator("summary", { hasText: label("fixture-c") }),
   });
   await c.locator("summary").click();
   await expect(c).toContainText("Official binary from the upstream release.");
-  const devDetails = page.locator("details.prov", { has: page.locator("summary", { hasText: a }) });
-  await devDetails.locator("summary").click();
-  await expect(devDetails).toContainText("Development commit");
-  await expect(devDetails).toContainText("fixture-a 1.0.0");
+  const dev = page.locator("details.prov", { has: page.locator("summary", { hasText: a }) });
+  await dev.locator("summary").click();
+  await expect(dev).toContainText("Development commit");
+  await expect(dev).toContainText(buildA.version_output);
   await page.locator("#machine-details summary").click();
   await expect(page.locator("#machine-details")).toContainText("neon");
   await page.locator("#settings-details summary").click();
-  await expect(page.locator("#settings-details")).toContainText("process-wall");
+  await expect(page.locator("#settings-details")).toContainText("decode-discard");
 });
 
-test("history is loaded only when it is opened", async ({ page }) => {
-  await withData(page, "main");
+test("history connects only datasets with the same series", async ({ page }) => {
+  await withData(page);
   const loaded: string[] = [];
   page.on("request", (r) => r.url().includes("summary.json") && loaded.push(r.url()));
-  await page.goto(`${full}&machine=fixture-arm-01&threads=1&depth=8`);
+  await page.goto(`${full}&machine=${X86}&threads=1&depth=8`);
   await expect(page.locator("#view-throughput")).toBeVisible();
   expect(loaded).toHaveLength(1);
   await page.locator("#bench-history summary").click();
   const rows = page.locator("#bench-history tbody tr");
-  const older = summary("ds-f1f1f1f1f1f10001").implementations[0].commit.slice(0, 12);
-  await expect(rows.filter({ hasText: "fixture-older" })).toContainText(
-    `fixture-a ${older} (development)`,
-  );
-  await expect(rows.filter({ hasText: "fixture-full" })).toHaveCount(1);
-  // Only datasets of the same series and origin: the official dataset is not in the list.
-  await expect(rows.filter({ hasText: "fixture-official" })).toHaveCount(0);
+  // DS3 measured the x86 machine with another fingerprint: another series.
+  const x86 = indexJson()
+    .datasets.filter((d: Json) =>
+      d.series.some((x: Json) => x.machine_id === X86 && x.series_id === s1.machines[1].series_id),
+    )
+    .map((d: Json) => d.dataset_id);
+  expect(x86).toEqual([DS1, DS2, DS4]);
+  await expect(rows).toHaveCount(x86.length);
+  for (const id of x86) await expect(rows.filter({ hasText: id })).toHaveCount(1);
+  await expect(rows.filter({ hasText: DS3 })).toHaveCount(0);
+  const s2 = summary(DS2);
+  await expect(rows.filter({ hasText: DS2 })).toContainText(label("fixture-b", s2));
   expect(loaded.length).toBeGreaterThan(1);
+
+  // The ARM machine kept its fingerprint, so DS3 is in its series.
+  await page.locator("#f-machine").selectOption(ARM);
+  await page.locator("#bench-history summary").click();
+  await expect(rows.filter({ hasText: DS3 })).toHaveCount(1);
 });
 
-test("no console errors or CSP violations in the loaded view", async ({ page }) => {
+test("every generated dataset loads without console errors or CSP violations", async ({ page }) => {
   const problems = watchProblems(page);
   await page.addInitScript(() => {
     document.addEventListener("securitypolicyviolation", (e) =>
       console.error(`CSP: ${e.violatedDirective} ${e.blockedURI}`),
     );
   });
-  await withData(page, "main");
-  await page.goto(full);
-  await expect(page.locator("#view-throughput .chart svg")).toBeVisible();
-  await page.locator("#f-machine").selectOption("fixture-x86-01");
-  await page.locator("#bench-history summary").click();
-  await expect(page.locator("#bench-history tbody tr").first()).toBeVisible();
-  for (const s of await page.locator("details.prov summary").all()) await s.click();
+  await withData(page);
+  for (const id of [DS1, DS2, DS3, DS4]) {
+    await page.goto(`/benchmarks/?dataset=${id}`);
+    await expect(page.locator("#view-throughput .chart svg")).toBeVisible();
+    await page.locator("#bench-history summary").click();
+    await expect(page.locator("#bench-history tbody tr").first()).toBeVisible();
+    await page.evaluate(() =>
+      document.querySelectorAll("details.prov").forEach((d) => d.setAttribute("open", "")),
+    );
+  }
   await page.setViewportSize({ width: 390, height: 900 });
   await expect(page.locator("#view-throughput .chart svg")).toHaveAttribute("width", /\d+/);
-  // The broken and future datasets of the series report their own errors in the table.
-  expect(problems.filter((p) => !p.includes("404"))).toEqual([]);
+  expect(problems).toEqual([]);
 });
 
 test("the benchmarks page is usable without JavaScript", async ({ browser }) => {
@@ -414,72 +534,16 @@ test("the benchmarks page is usable without JavaScript", async ({ browser }) => 
   await context.close();
 });
 
-for (const loaded of [false, true]) {
-  const name = loaded ? "loaded" : "production";
-  for (const width of [320, 390, 768, 1440]) {
-    test(`benchmarks ${name}: no horizontal overflow at ${width}px`, async ({ page }) => {
-      await page.setViewportSize({ width, height: 900 });
-      await withData(page, loaded ? "main" : "empty");
-      await page.goto(loaded ? `${full}&machine=fixture-x86-01` : "/benchmarks/");
-      if (!loaded) await expect(status(page)).toHaveAttribute("data-state", "empty");
-      if (loaded) {
-        await expect(page.locator("#view-throughput .chart svg")).toBeVisible();
-        for (const s of await page.locator("details.prov summary").all()) await s.click();
-        await expect(page.locator("#bench-history tbody tr").first()).toBeVisible();
-      }
-      const overflow = await page.evaluate(
-        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
-      );
-      expect(overflow).toBe(0);
-    });
-  }
-  for (const width of [390, 1440]) {
-    test(`benchmarks ${name}: axe finds no violations at ${width}px`, async ({ page }) => {
-      await page.setViewportSize({ width, height: 900 });
-      await withData(page, loaded ? "main" : "empty");
-      await page.goto(loaded ? `${full}&machine=fixture-x86-01` : "/benchmarks/");
-      if (!loaded) await expect(status(page)).toHaveAttribute("data-state", "empty");
-      if (loaded) {
-        await expect(page.locator("#view-throughput .chart svg")).toBeVisible();
-        for (const s of await page.locator("details.prov summary").all()) await s.click();
-        await expect(page.locator("#bench-history tbody tr").first()).toBeVisible();
-      }
-      const results = await new AxeBuilder({ page })
-        .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"])
-        .analyze();
-      expect(results.violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
-    });
-  }
-}
-
-test("without latest_complete, the newest dataset is the default, with a notice", async ({
-  page,
-}) => {
-  await withData(page, "main");
-  const index = mainIndex();
-  index.latest_complete = null;
-  index.datasets.reverse();
-  await serve(page, "index.json", JSON.stringify(index));
-  await page.goto("/benchmarks/");
-  await expect(page.locator("#f-dataset")).toHaveValue("ds-f1f1f1f1f1f10004");
-  await expect(page.locator('[data-banner="note"]')).toContainText(
-    "No complete official dataset is marked as current.",
-  );
-  await expect(page.locator("#view-throughput")).toBeVisible();
-});
-
 test("latest_complete must name a complete official dataset", async ({ page }) => {
-  await withData(page, "main");
-  const index = mainIndex();
-  index.latest_complete = full3; // synthetic
-  await serve(page, "index.json", JSON.stringify(index));
+  await withData(page);
+  await serveIndex(page, (i) => (i.latest_complete = DS2)); // synthetic
   await page.goto("/benchmarks/");
   await expect(status(page)).toHaveAttribute("data-state", "error");
   await expect(status(page)).toContainText("does not name a complete official dataset");
 });
 
 test('origin "local" shows the "Not official data" banner', async ({ page }) => {
-  await withData(page, "main");
+  await withData(page);
   await serveSummary(page, (s) => (s.origin = "local"));
   await page.goto(full);
   await expect(page.locator('[data-banner="origin"]')).toContainText("Not official data.");
@@ -492,19 +556,20 @@ const invalid: [string, (s: Json) => void, string][] = [
     (s) => (s.cells.find((c: Json) => c.status !== "ok").fps_median = 100),
     "and the metric fps_median",
   ],
+  ["an unknown cell status", (s) => (s.cells[0].status = "fast"), 'the unknown value "fast"'],
   [
     "a release identity without a release",
-    (s) => (s.implementations[1].release = null),
+    (s) => (impl("fixture-b", s).release = null),
     'release must be set exactly when the identity is "release"',
   ],
   [
     "a development identity with a release build origin",
-    (s) => (s.implementations[0].build_origin = "source-release"),
+    (s) => (impl("fixture-a", s).build_origin = "source-release"),
     "does not match the identity",
   ],
   [
     "a release identity built from development source",
-    (s) => (s.implementations[1].build_origin = "source-development"),
+    (s) => (impl("fixture-b", s).build_origin = "source-development"),
     "does not match the identity",
   ],
   ["a cell with an unknown build", (s) => (s.cells[0].build_id = "bld-0000000000000000"), "build"],
@@ -541,7 +606,7 @@ const invalid: [string, (s: Json) => void, string][] = [
 ];
 for (const [name, change, message] of invalid) {
   test(`invalid data: ${name}`, async ({ page }) => {
-    await withData(page, "main");
+    await withData(page);
     await serveSummary(page, change);
     await page.goto(full);
     await expect(status(page)).toHaveAttribute("data-state", "error");
@@ -551,47 +616,28 @@ for (const [name, change, message] of invalid) {
 }
 
 test("oversized index list and oversized file are refused", async ({ page }) => {
-  await withData(page, "main");
-  const index = mainIndex();
-  index.latest_complete = null;
-  index.datasets = Array.from({ length: 1001 }, (_, i) => ({
-    ...index.datasets[1],
-    dataset_id: `ds-${String(i).padStart(16, "0")}`,
-  }));
-  await serve(page, "index.json", JSON.stringify(index));
+  await withData(page);
+  await serveIndex(page, (i) => {
+    i.datasets = Array.from({ length: 1001 }, (_, n) => ({
+      ...i.datasets[0],
+      dataset_id: `ds-${String(n).padStart(16, "0")}`,
+    }));
+  });
   await page.goto("/benchmarks/");
   await expect(status(page)).toContainText("index.datasets has more than 1000 entries.");
 
-  await withData(page, "main");
-  await serve(page, `datasets/${full3}/summary.json`, `{${" ".repeat(5_000_001)}}`);
+  await withData(page);
+  await serve(page, `datasets/${DS1}/summary.json`, `{${" ".repeat(5_000_001)}}`);
   await page.goto(full);
   await expect(status(page)).toContainText("is larger than 5 MB.");
 });
 
-test("an expected machine role without results is named", async ({ page }) => {
-  await withData(page, "main");
-  await serveSummary(page, (s) => {
-    const arm = "fixture-arm-01";
-    s.machines = s.machines.filter((m: Json) => m.machine_id !== arm);
-    for (const k of ["builds", "cells", "speedups", "aggregates"]) {
-      s[k] = s[k].filter((x: Json) => x.machine_id !== arm);
-    }
-    s.complete = false;
-    s.coverage.roles_present = ["x86-64"];
-  });
-  await page.goto(full);
-  const banner = page.locator('[data-banner="partial"]');
-  await expect(banner).toContainText("No results exist for the expected machine roles arm64");
-  await expect(banner).toContainText("Of 48 expected results: 43 ok");
-  await expect(page.locator("#f-machine option")).toHaveCount(1);
-});
-
 test("a release URL that is not https is shown as text", async ({ page }) => {
-  await withData(page, "main");
-  await serveSummary(page, (s) => (s.implementations[1].release.url = "http://example.com/v1"));
-  await page.goto(`${full}&machine=fixture-arm-01`);
+  await withData(page);
+  await serveSummary(page, (s) => (impl("fixture-b", s).release.url = "http://example.com/v1"));
+  await page.goto(`${full}&machine=${ARM}`);
   const b = page.locator("details.prov", {
-    has: page.locator("summary", { hasText: /^fixture-b/ }),
+    has: page.locator("summary", { hasText: label("fixture-b") }),
   });
   await b.locator("summary").click();
   await expect(b).toContainText("http://example.com/v1");
@@ -599,26 +645,26 @@ test("a release URL that is not https is shown as text", async ({ page }) => {
 });
 
 test("stream details show the input identity", async ({ page }) => {
-  await withData(page, "main");
-  await page.goto(`${full}&depth=8&q=1280`);
+  await withData(page);
+  await page.goto(`${full}&depth=8&q=720`);
   const d = page.locator("#streams-details");
   await d.locator("summary").click();
-  const c = summary(full3).cases.find((x: Json) => x.id === "fixture-720p-8bit");
+  const c = s1.cases.find((x: Json) => x.id === "example-720p-8bit");
   await expect(d).toContainText(c.input_sha256);
-  await expect(d).toContainText("130 frames");
+  await expect(d).toContainText(`${c.frames} frames`);
   await expect(d.getByRole("link", { name: c.url })).toHaveAttribute("href", c.url);
 });
 
 test("the filters work with the keyboard", async ({ page }) => {
-  await withData(page, "main");
-  await page.goto(`${full}&machine=fixture-arm-01&depth=8`);
+  await withData(page);
+  await page.goto(`${full}&machine=${ARM}&depth=8`);
   const rows = page.locator("#view-throughput tbody tr");
   await expect(rows).toHaveCount(6);
   await page.locator("#f-q").focus();
-  await page.keyboard.type("1280");
+  await page.keyboard.type("720");
   await expect(page.locator("#view-throughput tbody")).toHaveCount(1);
   await expect(page.locator("#f-q")).toBeFocused();
-  const box = page.getByRole("checkbox", { name: /^fixture-c/ });
+  const box = page.getByRole("checkbox", { name: label("fixture-c") });
   await box.focus();
   await page.keyboard.press("Space");
   await expect(box).not.toBeChecked();
@@ -630,3 +676,38 @@ test("the filters work with the keyboard", async ({ page }) => {
   await region.focus();
   await expect(region).toBeFocused();
 });
+
+for (const loaded of [false, true]) {
+  const name = loaded ? "loaded" : "production";
+  const open = async (page: Page) => {
+    await withData(page, loaded ? "main" : "empty");
+    await page.goto(loaded ? `${full}&machine=${X86}` : "/benchmarks/");
+    if (!loaded) {
+      await expect(status(page)).toHaveAttribute("data-state", "empty");
+      return;
+    }
+    await expect(page.locator("#view-throughput .chart svg")).toBeVisible();
+    for (const s of await page.locator("details.prov summary").all()) await s.click();
+    await expect(page.locator("#bench-history tbody tr").first()).toBeVisible();
+  };
+  for (const width of [320, 390, 768, 1440]) {
+    test(`benchmarks ${name}: no horizontal overflow at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await open(page);
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      );
+      expect(overflow).toBe(0);
+    });
+  }
+  for (const width of [390, 1440]) {
+    test(`benchmarks ${name}: axe finds no violations at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await open(page);
+      const results = await new AxeBuilder({ page })
+        .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"])
+        .analyze();
+      expect(results.violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
+    });
+  }
+}

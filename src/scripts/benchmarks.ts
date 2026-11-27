@@ -379,6 +379,7 @@ function form(s: Summary | null): HTMLFormElement {
       d.origin,
       d.complete ? "" : "incomplete",
       d.workload === "decode" ? "" : d.workload,
+      d.dataset_id, // Datasets of one campaign can share a name.
     ]
       .filter(Boolean)
       .join(" · "),
@@ -1087,7 +1088,12 @@ function historyView(s: Summary, m: Machine, impls: string[]): HTMLElement {
               h(
                 "tr",
                 null,
-                h("th", { scope: "row" }, e.name, h("small", null, e.published_utc)),
+                h(
+                  "th",
+                  { scope: "row" },
+                  e.name,
+                  h("small", null, `${e.published_utc} · ${e.dataset_id}`),
+                ),
                 ...(sum
                   ? impls.map((impl) => {
                       const x = found(sum, impl);
@@ -1191,6 +1197,8 @@ function provenance(s: Summary, m: Machine, cases: Case[]): HTMLElement {
     ["Operating system", `${fp.os.name} ${fp.os.version}`],
     ["Kernel", notRecorded(fp.os.kernel)],
     ["Memory", fp.memory_bytes === null ? "not recorded" : `${f0.format(fp.memory_bytes)} bytes`],
+    ["Power settings", notRecorded(fp.power)],
+    ["CPU affinity", notRecorded(fp.affinity)],
     ["Requested thread budgets", m.threads.join(", ")],
     ["Run id", m.run_id, "code"],
     ["Run state", m.run_state],

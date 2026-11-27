@@ -1,7 +1,0 @@
-{
-  "schema": "splotbench.summary/1",
-  "dataset_id": "ds-f1f1f1f1f1f10006",
-  "workload": {
-    "kind": "encode"
-  }
-}

@@ -40,17 +40,18 @@ Status values:
 
 The benchmarks page (`src/pages/benchmarks.astro`) makes no performance claim. It shows numbers
 only from a published dataset, without change, and it computes no statistics. While the
-published index lists no dataset, the page shows "Results are not published yet." Synthetic
-test fixtures are in
-`tests/fixtures/` and are not in the build output.
+published index lists no dataset, the page shows "Results are not published yet." The test fixtures
+in `tests/fixtures/` are synthetic data that the benchmarks harness generated at commit
+`a43483755507897fda4641ea166d33f0c29d6e24` (`tests/make_viewer_fixtures.py`). They are not in the
+build output.
 
 Sources: the Epic [splotlabs/splot#2046](https://github.com/splotlabs/splot/issues/2046) and
 the task [splotlabs/website#7](https://github.com/splotlabs/website/issues/7), read on
 2026-11-27, and the data contract `splotbench.index/1` and `splotbench.summary/1` for the
 [splotlabs/benchmarks](https://github.com/splotlabs/benchmarks) harness (task
-[splotlabs/splot#2049](https://github.com/splotlabs/splot/issues/2049)). On 2026-11-27 the
-contract schemas were not yet on the `main` branch of the benchmarks repository. When they are,
-record the commit here and regenerate the test fixtures from the harness.
+[splotlabs/splot#2049](https://github.com/splotlabs/splot/issues/2049)), as the harness at commit
+`a43483755507897fda4641ea166d33f0c29d6e24` writes it. When the contract changes, regenerate the
+test fixtures (see `tests/fixtures/README.md`) and record the new commit here.
 
 | Website content                                                                                                                                                                                                                                            | Source                                                                                                                           | Status                                                              |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
