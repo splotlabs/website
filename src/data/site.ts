@@ -47,6 +47,8 @@ export const cApi = [
   "splot_open",
   "splot_send_data",
   "splot_get_picture",
+  "splot_wait_picture",
+  "splot_flush",
   "splot_drain",
   "splot_close",
 ];

@@ -132,9 +132,11 @@ const description =
     </p>
     <CommandPanel title="Terminal" label="install" steps={install} />
     <p class="after">
-      Release builds use AVX2 on x86. On a CPU older than Intel Haswell (2013) or AMD Excavator
-      (2015), build with <code>RUSTFLAGS="-C target-cpu=x86-64"</code>. Apple Silicon and ARM need
-      nothing extra.
+      Release builds from the repository target x86-64-v3. The decoder detects AVX-512 at startup
+      and can use it for selected operations. AArch64 uses NEON. For an older x86-64 CPU, build with
+      <code>RUSTFLAGS="-C target-cpu=x86-64"</code>. That build selects SSE2, AVX2 or AVX-512 at
+      runtime, but the surrounding decoder code targets baseline x86-64, which can reduce
+      throughput.
     </p>
   </section>
 
