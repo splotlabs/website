@@ -41,9 +41,13 @@
     "cells_expected": 48,
     "cells_ok": 7,
     "status_counts": {
+      "ok": 7,
+      "incorrect": 0,
+      "unsupported": 0,
+      "timeout": 0,
+      "error": 0,
       "interrupted": 17,
-      "not-run": 24,
-      "ok": 7
+      "not-run": 24
     }
   },
   "corpus": {
@@ -861,6 +865,8 @@
       "excluded": [
         {
           "case_id": "example-720p-8bit",
+          "implementation": "fixture-b",
+          "status": "interrupted",
           "reason": "fixture-b: interrupted"
         }
       ]
@@ -877,10 +883,14 @@
       "excluded": [
         {
           "case_id": "example-1080p-8bit",
+          "implementation": "fixture-c",
+          "status": "interrupted",
           "reason": "fixture-c: interrupted"
         },
         {
           "case_id": "example-720p-8bit",
+          "implementation": "fixture-c",
+          "status": "interrupted",
           "reason": "fixture-c: interrupted"
         }
       ]
@@ -897,6 +907,8 @@
       "excluded": [
         {
           "case_id": "example-720p-8bit",
+          "implementation": "fixture-b",
+          "status": "interrupted",
           "reason": "fixture-b: interrupted"
         }
       ]
@@ -913,11 +925,21 @@
       "excluded": [
         {
           "case_id": "example-1080p-8bit",
+          "implementation": "fixture-c",
+          "status": "interrupted",
           "reason": "fixture-c: interrupted"
         },
         {
           "case_id": "example-720p-8bit",
-          "reason": "fixture-b: interrupted, fixture-c: interrupted"
+          "implementation": "fixture-b",
+          "status": "interrupted",
+          "reason": "fixture-b: interrupted"
+        },
+        {
+          "case_id": "example-720p-8bit",
+          "implementation": "fixture-c",
+          "status": "interrupted",
+          "reason": "fixture-c: interrupted"
         }
       ]
     },
@@ -933,10 +955,14 @@
       "excluded": [
         {
           "case_id": "example-1080p-8bit",
+          "implementation": "fixture-c",
+          "status": "interrupted",
           "reason": "fixture-c: interrupted"
         },
         {
           "case_id": "example-720p-8bit",
+          "implementation": "fixture-c",
+          "status": "interrupted",
           "reason": "fixture-c: interrupted"
         }
       ]
@@ -953,11 +979,21 @@
       "excluded": [
         {
           "case_id": "example-1080p-8bit",
+          "implementation": "fixture-c",
+          "status": "interrupted",
           "reason": "fixture-c: interrupted"
         },
         {
           "case_id": "example-720p-8bit",
-          "reason": "fixture-c: interrupted, fixture-b: interrupted"
+          "implementation": "fixture-b",
+          "status": "interrupted",
+          "reason": "fixture-b: interrupted"
+        },
+        {
+          "case_id": "example-720p-8bit",
+          "implementation": "fixture-c",
+          "status": "interrupted",
+          "reason": "fixture-c: interrupted"
         }
       ]
     },
@@ -984,10 +1020,14 @@
       "excluded": [
         {
           "case_id": "example-1080p-10bit",
+          "implementation": "fixture-c",
+          "status": "interrupted",
           "reason": "fixture-c: interrupted"
         },
         {
           "case_id": "example-720p-10bit",
+          "implementation": "fixture-c",
+          "status": "interrupted",
           "reason": "fixture-c: interrupted"
         }
       ]
@@ -1015,30 +1055,14 @@
       "excluded": [
         {
           "case_id": "example-1080p-10bit",
+          "implementation": "fixture-c",
+          "status": "interrupted",
           "reason": "fixture-c: interrupted"
         },
         {
           "case_id": "example-720p-10bit",
-          "reason": "fixture-c: interrupted"
-        }
-      ]
-    },
-    {
-      "machine_id": "fixture-x86-01",
-      "threads": 1,
-      "bit_depth": 10,
-      "implementation": "fixture-c",
-      "baseline": "fixture-a",
-      "geomean_ratio": null,
-      "n_matched": 0,
-      "n_expected": 2,
-      "excluded": [
-        {
-          "case_id": "example-1080p-10bit",
-          "reason": "fixture-c: interrupted"
-        },
-        {
-          "case_id": "example-720p-10bit",
+          "implementation": "fixture-c",
+          "status": "interrupted",
           "reason": "fixture-c: interrupted"
         }
       ]
@@ -1048,17 +1072,45 @@
       "threads": 1,
       "bit_depth": 10,
       "implementation": "fixture-c",
-      "baseline": "fixture-b",
+      "baseline": "fixture-a",
       "geomean_ratio": null,
       "n_matched": 0,
       "n_expected": 2,
       "excluded": [
         {
           "case_id": "example-1080p-10bit",
+          "implementation": "fixture-c",
+          "status": "interrupted",
           "reason": "fixture-c: interrupted"
         },
         {
           "case_id": "example-720p-10bit",
+          "implementation": "fixture-c",
+          "status": "interrupted",
+          "reason": "fixture-c: interrupted"
+        }
+      ]
+    },
+    {
+      "machine_id": "fixture-x86-01",
+      "threads": 1,
+      "bit_depth": 10,
+      "implementation": "fixture-c",
+      "baseline": "fixture-b",
+      "geomean_ratio": null,
+      "n_matched": 0,
+      "n_expected": 2,
+      "excluded": [
+        {
+          "case_id": "example-1080p-10bit",
+          "implementation": "fixture-c",
+          "status": "interrupted",
+          "reason": "fixture-c: interrupted"
+        },
+        {
+          "case_id": "example-720p-10bit",
+          "implementation": "fixture-c",
+          "status": "interrupted",
           "reason": "fixture-c: interrupted"
         }
       ]
@@ -1075,11 +1127,27 @@
       "excluded": [
         {
           "case_id": "example-1080p-8bit",
-          "reason": "fixture-a: interrupted, fixture-b: interrupted"
+          "implementation": "fixture-a",
+          "status": "interrupted",
+          "reason": "fixture-a: interrupted"
+        },
+        {
+          "case_id": "example-1080p-8bit",
+          "implementation": "fixture-b",
+          "status": "interrupted",
+          "reason": "fixture-b: interrupted"
         },
         {
           "case_id": "example-720p-8bit",
-          "reason": "fixture-a: interrupted, fixture-b: interrupted"
+          "implementation": "fixture-a",
+          "status": "interrupted",
+          "reason": "fixture-a: interrupted"
+        },
+        {
+          "case_id": "example-720p-8bit",
+          "implementation": "fixture-b",
+          "status": "interrupted",
+          "reason": "fixture-b: interrupted"
         }
       ]
     },
@@ -1095,11 +1163,27 @@
       "excluded": [
         {
           "case_id": "example-1080p-8bit",
-          "reason": "fixture-a: interrupted, fixture-c: interrupted"
+          "implementation": "fixture-a",
+          "status": "interrupted",
+          "reason": "fixture-a: interrupted"
+        },
+        {
+          "case_id": "example-1080p-8bit",
+          "implementation": "fixture-c",
+          "status": "interrupted",
+          "reason": "fixture-c: interrupted"
         },
         {
           "case_id": "example-720p-8bit",
-          "reason": "fixture-a: interrupted, fixture-c: interrupted"
+          "implementation": "fixture-a",
+          "status": "interrupted",
+          "reason": "fixture-a: interrupted"
+        },
+        {
+          "case_id": "example-720p-8bit",
+          "implementation": "fixture-c",
+          "status": "interrupted",
+          "reason": "fixture-c: interrupted"
         }
       ]
     },
@@ -1115,11 +1199,27 @@
       "excluded": [
         {
           "case_id": "example-1080p-8bit",
-          "reason": "fixture-b: interrupted, fixture-a: interrupted"
+          "implementation": "fixture-a",
+          "status": "interrupted",
+          "reason": "fixture-a: interrupted"
+        },
+        {
+          "case_id": "example-1080p-8bit",
+          "implementation": "fixture-b",
+          "status": "interrupted",
+          "reason": "fixture-b: interrupted"
         },
         {
           "case_id": "example-720p-8bit",
-          "reason": "fixture-b: interrupted, fixture-a: interrupted"
+          "implementation": "fixture-a",
+          "status": "interrupted",
+          "reason": "fixture-a: interrupted"
+        },
+        {
+          "case_id": "example-720p-8bit",
+          "implementation": "fixture-b",
+          "status": "interrupted",
+          "reason": "fixture-b: interrupted"
         }
       ]
     },
@@ -1135,11 +1235,27 @@
       "excluded": [
         {
           "case_id": "example-1080p-8bit",
-          "reason": "fixture-b: interrupted, fixture-c: interrupted"
+          "implementation": "fixture-b",
+          "status": "interrupted",
+          "reason": "fixture-b: interrupted"
+        },
+        {
+          "case_id": "example-1080p-8bit",
+          "implementation": "fixture-c",
+          "status": "interrupted",
+          "reason": "fixture-c: interrupted"
         },
         {
           "case_id": "example-720p-8bit",
-          "reason": "fixture-b: interrupted, fixture-c: interrupted"
+          "implementation": "fixture-b",
+          "status": "interrupted",
+          "reason": "fixture-b: interrupted"
+        },
+        {
+          "case_id": "example-720p-8bit",
+          "implementation": "fixture-c",
+          "status": "interrupted",
+          "reason": "fixture-c: interrupted"
         }
       ]
     },
@@ -1155,11 +1271,27 @@
       "excluded": [
         {
           "case_id": "example-1080p-8bit",
-          "reason": "fixture-c: interrupted, fixture-a: interrupted"
+          "implementation": "fixture-a",
+          "status": "interrupted",
+          "reason": "fixture-a: interrupted"
+        },
+        {
+          "case_id": "example-1080p-8bit",
+          "implementation": "fixture-c",
+          "status": "interrupted",
+          "reason": "fixture-c: interrupted"
         },
         {
           "case_id": "example-720p-8bit",
-          "reason": "fixture-c: interrupted, fixture-a: interrupted"
+          "implementation": "fixture-a",
+          "status": "interrupted",
+          "reason": "fixture-a: interrupted"
+        },
+        {
+          "case_id": "example-720p-8bit",
+          "implementation": "fixture-c",
+          "status": "interrupted",
+          "reason": "fixture-c: interrupted"
         }
       ]
     },
@@ -1175,11 +1307,27 @@
       "excluded": [
         {
           "case_id": "example-1080p-8bit",
-          "reason": "fixture-c: interrupted, fixture-b: interrupted"
+          "implementation": "fixture-b",
+          "status": "interrupted",
+          "reason": "fixture-b: interrupted"
+        },
+        {
+          "case_id": "example-1080p-8bit",
+          "implementation": "fixture-c",
+          "status": "interrupted",
+          "reason": "fixture-c: interrupted"
         },
         {
           "case_id": "example-720p-8bit",
-          "reason": "fixture-c: interrupted, fixture-b: interrupted"
+          "implementation": "fixture-b",
+          "status": "interrupted",
+          "reason": "fixture-b: interrupted"
+        },
+        {
+          "case_id": "example-720p-8bit",
+          "implementation": "fixture-c",
+          "status": "interrupted",
+          "reason": "fixture-c: interrupted"
         }
       ]
     },
@@ -1195,11 +1343,27 @@
       "excluded": [
         {
           "case_id": "example-1080p-10bit",
-          "reason": "fixture-a: interrupted, fixture-b: interrupted"
+          "implementation": "fixture-a",
+          "status": "interrupted",
+          "reason": "fixture-a: interrupted"
+        },
+        {
+          "case_id": "example-1080p-10bit",
+          "implementation": "fixture-b",
+          "status": "interrupted",
+          "reason": "fixture-b: interrupted"
         },
         {
           "case_id": "example-720p-10bit",
-          "reason": "fixture-a: interrupted, fixture-b: interrupted"
+          "implementation": "fixture-a",
+          "status": "interrupted",
+          "reason": "fixture-a: interrupted"
+        },
+        {
+          "case_id": "example-720p-10bit",
+          "implementation": "fixture-b",
+          "status": "interrupted",
+          "reason": "fixture-b: interrupted"
         }
       ]
     },
@@ -1215,11 +1379,27 @@
       "excluded": [
         {
           "case_id": "example-1080p-10bit",
-          "reason": "fixture-a: interrupted, fixture-c: interrupted"
+          "implementation": "fixture-a",
+          "status": "interrupted",
+          "reason": "fixture-a: interrupted"
+        },
+        {
+          "case_id": "example-1080p-10bit",
+          "implementation": "fixture-c",
+          "status": "interrupted",
+          "reason": "fixture-c: interrupted"
         },
         {
           "case_id": "example-720p-10bit",
-          "reason": "fixture-a: interrupted, fixture-c: interrupted"
+          "implementation": "fixture-a",
+          "status": "interrupted",
+          "reason": "fixture-a: interrupted"
+        },
+        {
+          "case_id": "example-720p-10bit",
+          "implementation": "fixture-c",
+          "status": "interrupted",
+          "reason": "fixture-c: interrupted"
         }
       ]
     },
@@ -1235,11 +1415,27 @@
       "excluded": [
         {
           "case_id": "example-1080p-10bit",
-          "reason": "fixture-b: interrupted, fixture-a: interrupted"
+          "implementation": "fixture-a",
+          "status": "interrupted",
+          "reason": "fixture-a: interrupted"
+        },
+        {
+          "case_id": "example-1080p-10bit",
+          "implementation": "fixture-b",
+          "status": "interrupted",
+          "reason": "fixture-b: interrupted"
         },
         {
           "case_id": "example-720p-10bit",
-          "reason": "fixture-b: interrupted, fixture-a: interrupted"
+          "implementation": "fixture-a",
+          "status": "interrupted",
+          "reason": "fixture-a: interrupted"
+        },
+        {
+          "case_id": "example-720p-10bit",
+          "implementation": "fixture-b",
+          "status": "interrupted",
+          "reason": "fixture-b: interrupted"
         }
       ]
     },
@@ -1255,11 +1451,27 @@
       "excluded": [
         {
           "case_id": "example-1080p-10bit",
-          "reason": "fixture-b: interrupted, fixture-c: interrupted"
+          "implementation": "fixture-b",
+          "status": "interrupted",
+          "reason": "fixture-b: interrupted"
+        },
+        {
+          "case_id": "example-1080p-10bit",
+          "implementation": "fixture-c",
+          "status": "interrupted",
+          "reason": "fixture-c: interrupted"
         },
         {
           "case_id": "example-720p-10bit",
-          "reason": "fixture-b: interrupted, fixture-c: interrupted"
+          "implementation": "fixture-b",
+          "status": "interrupted",
+          "reason": "fixture-b: interrupted"
+        },
+        {
+          "case_id": "example-720p-10bit",
+          "implementation": "fixture-c",
+          "status": "interrupted",
+          "reason": "fixture-c: interrupted"
         }
       ]
     },
@@ -1275,11 +1487,27 @@
       "excluded": [
         {
           "case_id": "example-1080p-10bit",
-          "reason": "fixture-c: interrupted, fixture-a: interrupted"
+          "implementation": "fixture-a",
+          "status": "interrupted",
+          "reason": "fixture-a: interrupted"
+        },
+        {
+          "case_id": "example-1080p-10bit",
+          "implementation": "fixture-c",
+          "status": "interrupted",
+          "reason": "fixture-c: interrupted"
         },
         {
           "case_id": "example-720p-10bit",
-          "reason": "fixture-c: interrupted, fixture-a: interrupted"
+          "implementation": "fixture-a",
+          "status": "interrupted",
+          "reason": "fixture-a: interrupted"
+        },
+        {
+          "case_id": "example-720p-10bit",
+          "implementation": "fixture-c",
+          "status": "interrupted",
+          "reason": "fixture-c: interrupted"
         }
       ]
     },
@@ -1295,11 +1523,27 @@
       "excluded": [
         {
           "case_id": "example-1080p-10bit",
-          "reason": "fixture-c: interrupted, fixture-b: interrupted"
+          "implementation": "fixture-b",
+          "status": "interrupted",
+          "reason": "fixture-b: interrupted"
+        },
+        {
+          "case_id": "example-1080p-10bit",
+          "implementation": "fixture-c",
+          "status": "interrupted",
+          "reason": "fixture-c: interrupted"
         },
         {
           "case_id": "example-720p-10bit",
-          "reason": "fixture-c: interrupted, fixture-b: interrupted"
+          "implementation": "fixture-b",
+          "status": "interrupted",
+          "reason": "fixture-b: interrupted"
+        },
+        {
+          "case_id": "example-720p-10bit",
+          "implementation": "fixture-c",
+          "status": "interrupted",
+          "reason": "fixture-c: interrupted"
         }
       ]
     }

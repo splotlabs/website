@@ -3,7 +3,7 @@
 These files are synthetic test data, not measurements. The benchmarks harness generated them:
 
 - Repository: [splotlabs/benchmarks](https://github.com/splotlabs/benchmarks)
-- Commit: `a43483755507897fda4641ea166d33f0c29d6e24`
+- Commit: `206eb6294206218a639137f1422eadf72647c39b`
 - Command: `python3 tests/make_viewer_fixtures.py OUT_DIR`
 
 The tests read `empty/index.json`, `main/index.json` and `main/datasets/<dataset_id>/summary.json`.

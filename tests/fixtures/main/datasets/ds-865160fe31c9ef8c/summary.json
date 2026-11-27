@@ -42,10 +42,13 @@
     "cells_expected": 48,
     "cells_ok": 45,
     "status_counts": {
-      "incorrect": 1,
       "ok": 45,
+      "incorrect": 1,
+      "unsupported": 1,
       "timeout": 1,
-      "unsupported": 1
+      "error": 0,
+      "interrupted": 0,
+      "not-run": 0
     }
   },
   "corpus": {
@@ -2184,6 +2187,8 @@
       "excluded": [
         {
           "case_id": "example-720p-10bit",
+          "implementation": "fixture-c",
+          "status": "unsupported",
           "reason": "fixture-c: unsupported"
         }
       ]
@@ -2211,6 +2216,8 @@
       "excluded": [
         {
           "case_id": "example-720p-10bit",
+          "implementation": "fixture-c",
+          "status": "unsupported",
           "reason": "fixture-c: unsupported"
         }
       ]
@@ -2227,6 +2234,8 @@
       "excluded": [
         {
           "case_id": "example-720p-10bit",
+          "implementation": "fixture-c",
+          "status": "unsupported",
           "reason": "fixture-c: unsupported"
         }
       ]
@@ -2243,6 +2252,8 @@
       "excluded": [
         {
           "case_id": "example-720p-10bit",
+          "implementation": "fixture-c",
+          "status": "unsupported",
           "reason": "fixture-c: unsupported"
         }
       ]
@@ -2259,6 +2270,8 @@
       "excluded": [
         {
           "case_id": "example-720p-8bit",
+          "implementation": "fixture-a",
+          "status": "timeout",
           "reason": "fixture-a: timeout"
         }
       ]
@@ -2275,6 +2288,8 @@
       "excluded": [
         {
           "case_id": "example-720p-8bit",
+          "implementation": "fixture-a",
+          "status": "timeout",
           "reason": "fixture-a: timeout"
         }
       ]
@@ -2291,6 +2306,8 @@
       "excluded": [
         {
           "case_id": "example-720p-8bit",
+          "implementation": "fixture-a",
+          "status": "timeout",
           "reason": "fixture-a: timeout"
         }
       ]
@@ -2318,6 +2335,8 @@
       "excluded": [
         {
           "case_id": "example-720p-8bit",
+          "implementation": "fixture-a",
+          "status": "timeout",
           "reason": "fixture-a: timeout"
         }
       ]
@@ -2345,6 +2364,8 @@
       "excluded": [
         {
           "case_id": "example-1080p-10bit",
+          "implementation": "fixture-b",
+          "status": "incorrect",
           "reason": "fixture-b: incorrect"
         }
       ]
@@ -2372,6 +2393,8 @@
       "excluded": [
         {
           "case_id": "example-1080p-10bit",
+          "implementation": "fixture-b",
+          "status": "incorrect",
           "reason": "fixture-b: incorrect"
         }
       ]
@@ -2388,6 +2411,8 @@
       "excluded": [
         {
           "case_id": "example-1080p-10bit",
+          "implementation": "fixture-b",
+          "status": "incorrect",
           "reason": "fixture-b: incorrect"
         }
       ]
@@ -2415,6 +2440,8 @@
       "excluded": [
         {
           "case_id": "example-1080p-10bit",
+          "implementation": "fixture-b",
+          "status": "incorrect",
           "reason": "fixture-b: incorrect"
         }
       ]

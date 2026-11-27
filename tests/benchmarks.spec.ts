@@ -93,6 +93,15 @@ function watchProblems(page: Page) {
 }
 
 const status = (page: Page) => page.locator("#bench-status");
+const statusLabels: Record<string, string> = {
+  ok: "OK",
+  incorrect: "Incorrect output",
+  unsupported: "Unsupported",
+  timeout: "Timeout",
+  error: "Error",
+  interrupted: "Interrupted",
+  "not-run": "Not run",
+};
 const statusWords: Record<string, string> = {
   ok: "ok",
   incorrect: "incorrect output",
@@ -120,6 +129,14 @@ test("production: an empty index shows that results are not published", async ({
   await expect(page.getByRole("link", { name: "Benchmark harness" })).toHaveAttribute(
     "href",
     benchmarks.repo,
+  );
+  await expect(page.getByRole("link", { name: /^Methodology/ })).toHaveAttribute(
+    "href",
+    "https://github.com/splotlabs/benchmarks/blob/main/docs/METHODOLOGY.md",
+  );
+  await expect(page.getByRole("link", { name: "Reproduce a run" })).toHaveAttribute(
+    "href",
+    "https://github.com/splotlabs/benchmarks/blob/main/docs/REPRODUCE.md",
   );
   await page.waitForLoadState("networkidle");
   for (const url of requests.map((u) => new URL(u)).filter((u) => u.origin === origin)) {
@@ -163,17 +180,31 @@ test("the CSP allows the data base and blocks other paths of the host", async ({
   expect(result.blocked).toContain(result.sibling);
 });
 
-test("without latest_complete, the newest dataset is the default, with coverage", async ({
-  page,
-}) => {
-  const problems = watchProblems(page);
+test("without latest_complete, the newest complete dataset is the default", async ({ page }) => {
   await withData(page);
   await page.goto("/benchmarks/");
-  // The generated index has no promoted dataset. DS4 is the newest, and it is partial.
+  // The generated index has no promoted dataset. DS4 is newer, but it is partial.
+  await expect(page.locator("#f-dataset")).toHaveValue(DS3);
+  await expect(page.locator('[data-banner="note"]')).toContainText(
+    "No complete official dataset is marked as current. The default is the newest complete dataset.",
+  );
+  await expect(page.locator('[data-banner="partial"]')).toHaveCount(0);
+});
+
+test("without any complete dataset, the newest dataset is the default", async ({ page }) => {
+  await withData(page);
+  await serveIndex(page, (i) => i.datasets.forEach((d: Json) => (d.complete = false)));
+  await page.goto("/benchmarks/");
   await expect(page.locator("#f-dataset")).toHaveValue(DS4);
   await expect(page.locator('[data-banner="note"]')).toContainText(
-    "No complete official dataset is marked as current.",
+    "The default is the newest dataset.",
   );
+});
+
+test("a partial dataset names the missing role and the status counts", async ({ page }) => {
+  const problems = watchProblems(page);
+  await withData(page);
+  await page.goto(`/benchmarks/?dataset=${DS4}`);
   const banner = page.locator('[data-banner="partial"]');
   const cov = summary(DS4).coverage;
   const missing = cov.roles_expected.filter((r: string) => !cov.roles_present.includes(r));
@@ -182,7 +213,7 @@ test("without latest_complete, the newest dataset is the default, with coverage"
   );
   await expect(banner).toContainText(`Of ${cov.cells_expected} expected results:`);
   for (const [st, n] of Object.entries(cov.status_counts)) {
-    await expect(banner).toContainText(`${n} ${statusWords[st]}`);
+    if (n) await expect(banner).toContainText(`${n} ${statusWords[st]}`);
   }
   await expect(banner).toContainText(`${X86}: run interrupted.`);
   await expect(page.locator("#f-machine option")).toHaveCount(1);
@@ -273,7 +304,9 @@ test("baseline change uses the speedups and aggregates of the dataset", async ({
     `geometric mean ${two(agg.geomean_ratio)}, ${agg.n_matched} of ${agg.n_expected} streams matched.`,
   );
   for (const x of agg.excluded) {
-    await expect(first).toContainText(`Excluded: ${caseName(x.case_id)} (${x.reason})`);
+    await expect(first).toContainText(
+      `Excluded: ${caseName(x.case_id)} (${label(x.implementation)}: ${statusLabels[x.status]})`,
+    );
   }
   const failed = s1.cells.find(
     (c: Json) => c.machine_id === ARM && c.threads === 1 && c.status === "unsupported",
@@ -303,6 +336,8 @@ test("a failed cell is a labelled status, not a zero bar", async ({ page }) => {
   await expect(row.locator("td").nth(2)).toHaveText("not measured");
   await expect(row.locator("td")).toHaveCount(3);
   await expect(view.locator(".chart text.st")).toHaveText(["Unsupported"]);
+  // Chart rows name the decoder. The full label with the commit is in the table.
+  await expect(view.locator(".chart text.lbl").first()).toHaveText(impl("fixture-a").name);
   const ok = s1.cells.filter(
     (c: Json) =>
       c.machine_id === ARM && c.threads === 1 && c.status === "ok" && c.case_id.endsWith("10bit"),
@@ -597,6 +632,16 @@ const invalid: [string, (s: Json) => void, string][] = [
     "a cell with a thread budget its machine does not list",
     (s) => (s.cells[0].threads = 3),
     "thread budget that its machine does not list",
+  ],
+  [
+    "an exclusion that names an unknown implementation",
+    (s) => (s.aggregates.find((a: Json) => a.excluded.length).excluded[0].implementation = "x"),
+    'unknown implementation "x"',
+  ],
+  [
+    "status counts without one status",
+    (s) => delete s.coverage.status_counts.error,
+    "summary.coverage.status_counts.error is not a number.",
   ],
   [
     "an oversized list",

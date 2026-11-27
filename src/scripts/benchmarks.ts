@@ -269,15 +269,18 @@ async function start() {
   const params = new URLSearchParams(location.search);
   const wanted = params.get("dataset");
   const known = index.datasets.some((d) => d.dataset_id === wanted);
-  // Without a marked complete official dataset, the newest published dataset is the default.
-  const newest = index.datasets.reduce((a, b) => (b.published_utc > a.published_utc ? b : a));
-  const id = known ? wanted! : (index.latest_complete ?? newest.dataset_id);
+  // Without a promoted dataset: the newest complete dataset, else the newest dataset.
+  const newest = (ds: IndexEntry[]) =>
+    ds.reduce((a, b) => (b.published_utc > a.published_utc ? b : a));
+  const complete = index.datasets.filter((d) => d.complete);
+  const fallback = newest(complete.length ? complete : index.datasets);
+  const id = known ? wanted! : (index.latest_complete ?? fallback.dataset_id);
   const notes = [
     wanted && !known
       ? `The dataset "${wanted}" is not in the index. This is the default dataset.`
       : "",
     index.latest_complete === null
-      ? "No complete official dataset is marked as current. The default is the newest published dataset."
+      ? `No complete official dataset is marked as current. The default is the newest ${complete.length ? "complete " : ""}dataset.`
       : "",
   ];
   const note = notes.filter(Boolean).join(" ");
@@ -585,7 +588,10 @@ function views(s: Summary): HTMLElement[] {
       chartBox(
         cases.map((c) => ({
           label: c.name,
-          bars: impls.map((i) => bar(i.id, cell(c.id, i.id), (x) => x.fps_median, fps)),
+          bars: impls.map((i) => ({
+            ...bar(i.name, cell(c.id, i.id), (x) => x.fps_median, fps),
+            key: i.id,
+          })),
         })),
         keys,
       ),
@@ -722,7 +728,11 @@ function views(s: Summary): HTMLElement[] {
                   "ul",
                   null,
                   ...a.excluded.map((x) =>
-                    h("li", null, `Excluded: ${caseName(x.case_id)} (${x.reason})`),
+                    h(
+                      "li",
+                      null,
+                      `Excluded: ${caseName(x.case_id)} (${label(x.implementation)}: ${statusText[x.status]})`,
+                    ),
                   ),
                 )
               : null,
@@ -745,13 +755,15 @@ function views(s: Summary): HTMLElement[] {
             const r = ratios.get(`${c.id}|${i.id}`);
             return r === undefined
               ? {
-                  label: i.id,
+                  label: i.name,
+                  key: i.id,
                   value: null,
                   text: "not comparable",
                   title: `${label(i.id)}: not comparable (${why(c.id, i.id)})`,
                 }
               : {
-                  label: i.id,
+                  label: i.name,
+                  key: i.id,
                   value: r,
                   text: ratio(r),
                   title: `${label(i.id)}: ${ratio(r)} against ${label(view.baseline)}`,
@@ -895,6 +907,8 @@ interface Bar {
   value: number | null;
   text: string;
   title: string;
+  /** The color key: a decoder id. */
+  key?: string;
 }
 interface Group {
   label: string;
@@ -919,7 +933,7 @@ function bar(
   return { label, value: v, text: fmt(v), title: `${label}: ${fmt(v)}` };
 }
 
-/** keys: bar labels that keep one color in every chart (the decoder ids). */
+/** keys: bar keys that keep one color in every chart (the decoder ids). */
 function chartBox(groups: Group[], keys: string[] = [], ref?: number): HTMLElement {
   const box = h("div", { class: "chart" });
   const draw = () => {
@@ -958,7 +972,7 @@ function chartBox(groups: Group[], keys: string[] = [], ref?: number): HTMLEleme
       root.append(label);
       y += 22;
       g.bars.forEach((b, i) => {
-        const color = keys.includes(b.label) ? keys.indexOf(b.label) : i;
+        const color = b.key !== undefined && keys.includes(b.key) ? keys.indexOf(b.key) : i;
         const row = svg("g", { class: `row s${color % 3}` });
         row.append(svg("title", {}, b.title));
         row.append(
@@ -1052,6 +1066,7 @@ function historyView(s: Summary, m: Machine, impls: string[]): HTMLElement {
     );
     if (caseSel.value !== c || !details.open) return;
     const found = (sum: Summary, impl: string) => cellOf(sum, m.machine_id, c, view.threads, impl);
+    const nameOf = (impl: string) => s.implementations.find((i) => i.id === impl)?.name ?? impl;
     const labelIn = (sum: Summary, impl: string) => {
       const i = sum.implementations.find((x) => x.id === impl);
       return i ? implLabel(i) : impl;
@@ -1063,7 +1078,10 @@ function historyView(s: Summary, m: Machine, impls: string[]): HTMLElement {
             ? [
                 {
                   label: `${e.name} · ${e.published_utc.slice(0, 10)}`,
-                  bars: impls.map((impl) => bar(impl, found(sum, impl), (x) => x.fps_median, fps)),
+                  bars: impls.map((impl) => ({
+                    ...bar(nameOf(impl), found(sum, impl), (x) => x.fps_median, fps),
+                    key: impl,
+                  })),
                 },
               ]
             : [],

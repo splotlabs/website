@@ -61,5 +61,6 @@ export const benchmarks = {
   // The directory that contains index.json, with a final "/".
   dataBase: "https://raw.githubusercontent.com/splotlabs/benchmarks/main/published/",
   repo: "https://github.com/splotlabs/benchmarks",
-  epic: "https://github.com/splotlabs/splot/issues/2046",
+  methodology: "https://github.com/splotlabs/benchmarks/blob/main/docs/METHODOLOGY.md",
+  reproduce: "https://github.com/splotlabs/benchmarks/blob/main/docs/REPRODUCE.md",
 };

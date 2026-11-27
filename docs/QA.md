@@ -93,7 +93,7 @@ Subject: the production build with the real `benchmarks.dataBase` and the real `
 by the project Wrangler. The tests use no real network: Playwright aborts every request outside
 the local server and answers the data base URL with `page.route` from the synthetic fixtures in
 `tests/fixtures/` (as `text/plain`, like the raw file host). The benchmarks harness generated
-the fixtures at commit `a43483755507897fda4641ea166d33f0c29d6e24`
+the fixtures at commit `206eb6294206218a639137f1422eadf72647c39b`
 (`python3 tests/make_viewer_fixtures.py`). Official, local and invalid data are in-memory changes
 of these files in the tests. The fixtures are not in `dist/`.
 

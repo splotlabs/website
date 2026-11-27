@@ -156,7 +156,8 @@ export interface Aggregate {
   geomean_ratio: number | null;
   n_matched: number;
   n_expected: number;
-  excluded: { case_id: string; reason: string }[];
+  /** One entry per failing implementation of an excluded stream. */
+  excluded: { case_id: string; implementation: string; status: Status }[];
 }
 export interface Summary {
   dataset_id: string;
@@ -309,10 +310,9 @@ function parseCoverage(v: unknown): Coverage {
     roles_present: roles("roles_present"),
     cells_expected: int(c, "cells_expected", at),
     cells_ok: int(c, "cells_ok", at),
-    // The harness writes only the statuses that occur. A missing status counts 0.
     status_counts: statuses.map((st): [Status, number] => [
       st,
-      counts[st] === undefined ? 0 : int(counts, st, `${at}.status_counts`),
+      int(counts, st, `${at}.status_counts`),
     ]),
   };
 }
@@ -624,7 +624,12 @@ export function parseSummary(raw: unknown, expectedId: string): Summary {
           aat,
           (e, eat) => {
             const eo = obj(e, eat);
-            return { case_id: str(eo, "case_id", eat), reason: str(eo, "reason", eat) };
+            str(eo, "reason", eat); // Free text. The page builds its own text from the fields.
+            return {
+              case_id: str(eo, "case_id", eat),
+              implementation: str(eo, "implementation", eat),
+              status: oneOf(eo, "status", eat, statuses),
+            };
           },
           MAX.cases,
         ),
@@ -737,6 +742,12 @@ function checkReferences(s: Summary) {
     need(impls, x.baseline, "implementation", at);
   });
   s.speedups.forEach((x, i) => need(cases, x.case_id, "case", `summary.speedups[${i}]`));
+  s.aggregates.forEach((a, i) =>
+    a.excluded.forEach((e) => {
+      need(cases, e.case_id, "case", `summary.aggregates[${i}].excluded`);
+      need(impls, e.implementation, "implementation", `summary.aggregates[${i}].excluded`);
+    }),
+  );
 }
 
 /** An https link from the data, or null. Other schemes are shown as text only. */
