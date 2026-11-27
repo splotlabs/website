@@ -2548,6 +2548,21 @@
       "excluded": []
     }
   ],
+  "coverage": {
+    "roles_expected": ["arm64", "x86-64"],
+    "roles_present": ["arm64", "x86-64"],
+    "cells_expected": 48,
+    "cells_ok": 33,
+    "status_counts": {
+      "ok": 33,
+      "incorrect": 1,
+      "unsupported": 1,
+      "timeout": 1,
+      "error": 0,
+      "interrupted": 3,
+      "not-run": 9
+    }
+  },
   "downloads": {
     "manifest": "manifest.json",
     "csv": "summary.csv",

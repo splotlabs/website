@@ -6,6 +6,7 @@ import {
   DataError,
   httpsUrl,
   implLabel,
+  MAX_BYTES,
   parseIndex,
   parseSummary,
   UnsupportedError,
@@ -38,7 +39,10 @@ let base: URL;
 let index: BenchIndex;
 let current: Summary | null = null;
 let view: View;
-let charts: (() => void)[] = [];
+let entry: IndexEntry;
+/** Chart draw functions. A draw function removes itself when its chart left the page. */
+const charts = new Set<() => void>();
+const redraw = () => charts.forEach((draw) => draw());
 let body: HTMLElement | null = null;
 type Opt = [string, string];
 
@@ -117,11 +121,17 @@ const caseLabel = (c: Case) => `${c.width}×${c.height} · ${c.bit_depth}-bit ·
 
 class HttpError extends Error {}
 
-async function getJson(url: URL): Promise<unknown> {
+/** Fetches and parses JSON. The raw file host sends text/plain, so the type is not checked. */
+async function getJson(url: URL, maxBytes: number): Promise<unknown> {
   const res = await fetch(url, { credentials: "omit" });
   if (!res.ok) throw new HttpError(`The server answered HTTP ${res.status} for ${url.pathname}.`);
+  const text = await res.text();
+  // The string length counts UTF-16 units. That is a lower bound of the size in bytes.
+  if (text.length > maxBytes) {
+    throw new HttpError(`The file ${url.pathname} is larger than ${maxBytes / 1e6} MB.`);
+  }
   try {
-    return await res.json();
+    return JSON.parse(text);
   } catch {
     throw new HttpError(`The file ${url.pathname} is not valid JSON.`);
   }
@@ -131,16 +141,33 @@ function datasetDir(entry: IndexEntry): URL {
   return new URL(entry.path.endsWith("/") ? entry.path : `${entry.path}/`, base);
 }
 
-function loadSummary(entry: IndexEntry): Promise<Summary> {
-  let p = summaries.get(entry.dataset_id);
+function loadSummary(e: IndexEntry): Promise<Summary> {
+  let p = summaries.get(e.dataset_id);
   if (!p) {
-    p = getJson(new URL("summary.json", datasetDir(entry))).then((raw) =>
-      parseSummary(raw, entry.dataset_id),
+    p = getJson(new URL("summary.json", datasetDir(e)), MAX_BYTES.summary).then((raw) =>
+      parseSummary(raw, e.dataset_id),
     );
-    summaries.set(entry.dataset_id, p);
+    summaries.set(e.dataset_id, p);
   }
   return p;
 }
+
+const cellMaps = new WeakMap<Summary, Map<string, Cell>>();
+/** The cell of one machine, stream, thread budget and decoder. The map is built once. */
+function cellOf(s: Summary, machine: string, caseId: string, threads: number, impl: string) {
+  let map = cellMaps.get(s);
+  if (!map) {
+    map = new Map(
+      s.cells.map((c) => [`${c.machine_id}|${c.case_id}|${c.threads}|${c.implementation}`, c]),
+    );
+    cellMaps.set(s, map);
+  }
+  return map.get(`${machine}|${caseId}|${threads}|${impl}`);
+}
+
+const depthsOf = (s: Summary) =>
+  [...new Set(s.cases.map((c) => c.bit_depth))].sort((a, b) => a - b);
+const largest = (xs: number[]) => xs.reduce((a, b) => (b > a ? b : a), 0);
 
 // ---------- States ----------
 
@@ -179,7 +206,7 @@ function sanitize(s: Summary, p: URLSearchParams): View {
     s.machines[0].machine_id,
   );
   const m = s.machines.find((x) => x.machine_id === machine)!;
-  const depths = [...new Set(s.cases.map((c) => c.bit_depth))].sort((a, b) => a - b);
+  const depths = depthsOf(s);
   const depth = pick(Number(p.get("depth")), depths, depths[0]);
   const impls = s.implementations.map((i) => i.id);
   const asked = p.get("decoders");
@@ -189,7 +216,7 @@ function sanitize(s: Summary, p: URLSearchParams): View {
     dataset: s.dataset_id,
     machine,
     depth,
-    threads: pick(Number(p.get("threads")), m.threads, Math.max(...m.threads)),
+    threads: pick(Number(p.get("threads")), m.threads, largest(m.threads)),
     baseline: pick(p.get("baseline"), impls, impls[0]),
     decoders,
     q: (p.get("q") ?? "").slice(0, 100),
@@ -230,7 +257,7 @@ async function start() {
   base = new URL(benchmarks.dataBase);
   state("loading", "Loading the results…");
   try {
-    index = parseIndex(await getJson(new URL("index.json", base)));
+    index = parseIndex(await getJson(new URL("index.json", base), MAX_BYTES.index));
   } catch (e) {
     fail(e);
     return;
@@ -242,21 +269,31 @@ async function start() {
   const params = new URLSearchParams(location.search);
   const wanted = params.get("dataset");
   const known = index.datasets.some((d) => d.dataset_id === wanted);
-  const id = known ? wanted! : (index.latest_complete ?? index.datasets[0].dataset_id);
-  const note = wanted && !known ? `The dataset "${wanted}" is not in the index.` : "";
+  // Without a marked complete official dataset, the newest published dataset is the default.
+  const newest = index.datasets.reduce((a, b) => (b.published_utc > a.published_utc ? b : a));
+  const id = known ? wanted! : (index.latest_complete ?? newest.dataset_id);
+  const notes = [
+    wanted && !known
+      ? `The dataset "${wanted}" is not in the index. This is the default dataset.`
+      : "",
+    index.latest_complete === null
+      ? "No complete official dataset is marked as current. The default is the newest published dataset."
+      : "",
+  ];
+  const note = notes.filter(Boolean).join(" ");
   app.addEventListener("click", openTarget);
   let width = 0;
   new ResizeObserver(() => {
     if (app.clientWidth === width) return;
     width = app.clientWidth;
-    charts.forEach((draw) => draw());
+    redraw();
   }).observe(app);
   app.hidden = false;
   await selectDataset(id, params, note);
 }
 
 async function selectDataset(id: string, params: URLSearchParams, note = "") {
-  const entry = index.datasets.find((d) => d.dataset_id === id)!;
+  entry = index.datasets.find((d) => d.dataset_id === id)!;
   current = null;
   view = { ...view, dataset: id };
   render(note);
@@ -271,11 +308,24 @@ async function selectDataset(id: string, params: URLSearchParams, note = "") {
     return;
   }
   if (view.dataset !== id) return; // The reader selected another dataset in the meantime.
-  current = s;
-  view = sanitize(current, params);
-  writeUrl();
-  state("loaded", "");
-  render(note);
+  guarded(() => {
+    current = s;
+    view = sanitize(s, params);
+    writeUrl();
+    state("loaded", "");
+    render(note);
+  });
+}
+
+/** Runs a render step. Any failure ends in the error state, never in a stuck page. */
+function guarded(step: () => void) {
+  try {
+    step();
+  } catch (e) {
+    current = null;
+    body?.replaceChildren();
+    fail(e);
+  }
 }
 
 /** A link to a closed details element opens it. */
@@ -293,7 +343,7 @@ function render(note = "") {
   const focused = (document.activeElement as HTMLSelectElement | null)?.name;
   body = current ? h("div", { class: "bench-body" }) : null;
   app.replaceChildren(
-    note ? h("p", { class: "banner" }, note, " This is the default dataset.") : "",
+    note ? h("p", { class: "banner", "data-banner": "note" }, note) : "",
     form(current),
     body ?? "",
   );
@@ -305,10 +355,10 @@ function render(note = "") {
 function update() {
   if (!body || !current) return;
   const open = [...body.querySelectorAll("details[open]")].map((d) => d.id);
-  charts = [];
+  charts.clear();
   body.replaceChildren(...banners(current), meta(current), ...views(current));
   for (const id of open) document.getElementById(id)?.setAttribute("open", "");
-  charts.forEach((draw) => draw());
+  redraw();
 }
 
 function field(name: string, label: string, options: Opt[], value: string) {
@@ -341,7 +391,7 @@ function form(s: Summary | null): HTMLFormElement {
   if (s) {
     const m = machineOf(s);
     const impls = s.implementations.map((i): Opt => [i.id, implLabel(i)]);
-    const depths = [...new Set(s.cases.map((c) => c.bit_depth))].sort((a, b) => a - b);
+    const depths = depthsOf(s);
     f.append(
       field(
         "machine",
@@ -399,7 +449,14 @@ function form(s: Summary | null): HTMLFormElement {
     );
   }
   f.addEventListener("submit", (e) => e.preventDefault());
-  f.addEventListener("input", (e) => onInput(f, e));
+  let typing = 0;
+  f.addEventListener("input", (e) => {
+    clearTimeout(typing);
+    // The stream search waits for a pause in typing, so a large dataset does not redraw per key.
+    if ((e.target as HTMLInputElement).name === "q")
+      typing = window.setTimeout(() => onInput(f, e), 250);
+    else onInput(f, e);
+  });
   return f;
 }
 
@@ -418,12 +475,15 @@ function onInput(f: HTMLFormElement, e: Event) {
     void selectDataset(id, current ? toParams({ ...view, dataset: id }) : p);
     return;
   }
-  if (!current) return;
-  view = sanitize(current, p);
-  writeUrl();
-  // Machine and bit depth change the options of other fields.
-  if (name === "machine" || name === "depth") render();
-  else update();
+  const s = current;
+  if (!s) return;
+  guarded(() => {
+    view = sanitize(s, p);
+    writeUrl();
+    // Machine and bit depth change the options of other fields.
+    if (name === "machine" || name === "depth") render();
+    else update();
+  });
 }
 
 const machineOf = (s: Summary) => s.machines.find((m) => m.machine_id === view.machine)!;
@@ -449,15 +509,24 @@ function banners(s: Summary): HTMLElement[] {
       ),
     );
   }
+  const cov = s.coverage;
   const unfinished = s.machines.filter((m) => m.run_state !== "complete");
-  if (!s.complete || unfinished.length) {
+  const missing = cov.roles_expected.filter((r) => !cov.roles_present.includes(r));
+  if (!s.complete || unfinished.length || missing.length) {
+    const counts = cov.status_counts
+      .filter(([, n]) => n > 0)
+      .map(([st, n]) => `${n} ${statusText[st].toLowerCase()}`)
+      .join(", ");
     out.push(
       h(
         "p",
         { class: "banner", "data-banner": "partial" },
         h("strong", null, "Incomplete dataset. "),
-        "Some results are missing. Each missing result shows its status. ",
-        unfinished.map((m) => `${m.machine_id}: run ${m.run_state}.`).join(" "),
+        missing.length
+          ? `No results exist for the expected machine roles ${missing.join(", ")}: the dataset has no machine and no cell for them. `
+          : "",
+        unfinished.map((m) => `${m.machine_id}: run ${m.run_state}. `).join(""),
+        `Of ${cov.cells_expected} expected results: ${counts || "none"}. Each missing result shows its status.`,
       ),
     );
   }
@@ -465,12 +534,11 @@ function banners(s: Summary): HTMLElement[] {
 }
 
 function meta(s: Summary): HTMLElement {
-  const entry = index.datasets.find((d) => d.dataset_id === s.dataset_id)!;
   return kv([
     ["Dataset", s.name],
     ["Dataset id", code(s.dataset_id)],
     ["Published", entry.published_utc],
-    ["Methodology", code(String(s.methodology.id))],
+    ["Methodology", code(s.methodology_id)],
     ["Suite", `${s.suite.id}, ${s.suite.cases_expected} cases expected`],
   ]);
 }
@@ -488,11 +556,8 @@ function views(s: Summary): HTMLElement[] {
   );
   const impls = s.implementations.filter((i) => view.decoders.includes(i.id));
   const keys = s.implementations.map((i) => i.id);
-  const cells = new Map(
-    s.cells.map((c) => [`${c.machine_id}|${c.case_id}|${c.threads}|${c.implementation}`, c]),
-  );
   const cell = (caseId: string, impl: string, threads = view.threads) =>
-    cells.get(`${m.machine_id}|${caseId}|${threads}|${impl}`);
+    cellOf(s, m.machine_id, caseId, threads, impl);
   const buildIndex = (b: Build | undefined) => (b ? s.builds.indexOf(b) : -1);
   const buildOf = (impl: string) =>
     s.builds.find((b) => b.implementation === impl && b.machine_id === m.machine_id);
@@ -556,13 +621,13 @@ function views(s: Summary): HTMLElement[] {
           );
         }
         row.append(h("td", null, implLink(i.id, x)));
-        if (!x) {
+        if (!x || x.status !== "ok") {
+          // A result without the status ok has no numbers. Show the status only.
           row.append(
-            h(
-              "td",
-              { colspan: head.length - 2 },
-              h("span", { class: "st" }, "No result in the dataset"),
-            ),
+            x
+              ? h("td", null, statusCell(x))
+              : h("td", null, h("span", { class: "st" }, "No result")),
+            h("td", { colspan: head.length - 3 }, notMeasured()),
           );
         } else {
           row.append(
@@ -667,9 +732,9 @@ function views(s: Summary): HTMLElement[] {
     );
     const why = (caseId: string, impl: string) =>
       [impl, view.baseline]
-        .map((d) => [d, cell(caseId, d)?.status ?? "no result"] as const)
+        .map((d) => [d, cell(caseId, d)?.status] as const)
         .filter(([, st]) => st !== "ok")
-        .map(([d, st]) => `${d}: ${st}`)
+        .map(([d, st]) => `${label(d)}: ${st ? statusText[st] : "no result"}`)
         .join(", ") || "no ratio in the dataset";
     speedup.append(
       chartBox(
@@ -682,13 +747,13 @@ function views(s: Summary): HTMLElement[] {
                   label: i.id,
                   value: null,
                   text: "not comparable",
-                  title: `${i.id}: not comparable (${why(c.id, i.id)})`,
+                  title: `${label(i.id)}: not comparable (${why(c.id, i.id)})`,
                 }
               : {
                   label: i.id,
                   value: r,
                   text: ratio(r),
-                  title: `${i.id}: ${ratio(r)} against ${view.baseline}`,
+                  title: `${label(i.id)}: ${ratio(r)} against ${label(view.baseline)}`,
                 };
           }),
         })),
@@ -799,7 +864,7 @@ function views(s: Summary): HTMLElement[] {
       m,
       impls.map((i) => i.id),
     ),
-    provenance(s, m),
+    provenance(s, m, cases),
     downloads(s),
   );
   return out;
@@ -857,6 +922,10 @@ function bar(
 function chartBox(groups: Group[], keys: string[] = [], ref?: number): HTMLElement {
   const box = h("div", { class: "chart" });
   const draw = () => {
+    if (!box.isConnected) {
+      charts.delete(draw);
+      return;
+    }
     const w = Math.floor(box.clientWidth);
     if (!w) return;
     const char = 7.2; // Approximate width of a 12 px character.
@@ -868,7 +937,7 @@ function chartBox(groups: Group[], keys: string[] = [], ref?: number): HTMLEleme
     const valueW = 92;
     const barW = Math.max(40, w - labelW - valueW);
     const values = groups.flatMap((g) => g.bars.map((b) => b.value ?? 0));
-    const max = Math.max(ref ?? 0, ...values) || 1;
+    const max = largest([ref ?? 0, ...values]) || 1;
     const x = (v: number) => labelW + (v / max) * barW;
     const top = ref ? 18 : 0;
     const rowH = 24;
@@ -927,7 +996,7 @@ function chartBox(groups: Group[], keys: string[] = [], ref?: number): HTMLEleme
     }
     box.replaceChildren(root);
   };
-  charts.push(draw);
+  charts.add(draw);
   return box;
 }
 
@@ -981,14 +1050,7 @@ function historyView(s: Summary, m: Machine, impls: string[]): HTMLElement {
       ),
     );
     if (caseSel.value !== c || !details.open) return;
-    const found = (sum: Summary, impl: string) =>
-      sum.cells.find(
-        (x) =>
-          x.machine_id === m.machine_id &&
-          x.case_id === c &&
-          x.threads === view.threads &&
-          x.implementation === impl,
-      );
+    const found = (sum: Summary, impl: string) => cellOf(sum, m.machine_id, c, view.threads, impl);
     const labelIn = (sum: Summary, impl: string) => {
       const i = sum.implementations.find((x) => x.id === impl);
       return i ? implLabel(i) : impl;
@@ -1046,10 +1108,14 @@ function historyView(s: Summary, m: Machine, impls: string[]): HTMLElement {
         ),
       ),
     );
-    charts.forEach((draw) => draw());
+    redraw();
   };
-  details.addEventListener("toggle", () => details.open && void show());
-  caseSel.addEventListener("change", () => void show());
+  const run = () =>
+    show().catch(() =>
+      out.replaceChildren(h("p", { class: "st" }, "The history could not be shown.")),
+    );
+  details.addEventListener("toggle", () => details.open && void run());
+  caseSel.addEventListener("change", () => void run());
   const sec = section("history", "History", []);
   sec.append(details);
   return sec;
@@ -1057,64 +1123,55 @@ function historyView(s: Summary, m: Machine, impls: string[]): HTMLElement {
 
 // ---------- Provenance and downloads ----------
 
-function provenance(s: Summary, m: Machine): HTMLElement {
+/** A provenance row: label, value and how the value is shown. */
+type Row = [string, string, ("text" | "code" | "link")?];
+
+function provBlock(id: string, title: string, rows: Row[], what: string): HTMLElement {
+  return h(
+    "details",
+    { class: "prov", id },
+    h("summary", null, title),
+    kv(rows.map(([k, v, kind]) => [k, kind === "link" ? ext(v) : kind === "code" ? code(v) : v])),
+    copyButton(rows.map(([k, v]) => `${k}: ${v}`).join("\n"), what),
+  );
+}
+
+function provenance(s: Summary, m: Machine, cases: Case[]): HTMLElement {
   const shown = new Set([...view.decoders, view.baseline]);
   const sec = section("provenance", "Provenance", [
-    "The exact source, build and binary of each decoder on this machine, the machine, and the measurement settings.",
+    "The exact source, build and binary of each decoder on this machine, the machine, the streams and the measurement settings.",
   ]);
+  const notRecorded = (v: string | null) => v ?? "not recorded";
   s.builds.forEach((b, n) => {
     if (b.machine_id !== m.machine_id || !shown.has(b.implementation)) return;
     const i = s.implementations.find((x) => x.id === b.implementation)!;
-    const rows: [string, string][] = [
+    const c = b.configuration;
+    const rows: Row[] = [
       ["Decoder", i.name],
-      ["Repository", i.repository],
-      ["Commit", i.commit],
+      ["Repository", i.repository, "link"],
+      ["Commit", i.commit, "code"],
       ["Identity", i.identity === "release" ? "Verified release" : "Development commit"],
       ["Release", i.release ? `${i.release.version} (tag ${i.release.tag})` : "none"],
-      ["Release page", i.release?.url ?? "none"],
+      ["Release page", i.release?.url ?? "none", i.release ? "link" : "text"],
       ["Build origin", buildOriginText[i.build_origin]],
-      ["Source snapshot", i.snapshot_sha256],
-      ["Build id", b.build_id],
+      ["Source snapshot", i.snapshot_sha256, "code"],
+      ["Build id", b.build_id, "code"],
       ["Build class", b.class],
-      ["Binary SHA-256", b.binary_sha256],
-      [
-        "Libraries",
-        b.libraries.length ? b.libraries.map((l) => JSON.stringify(l)).join("; ") : "none",
-      ],
+      ["Binary SHA-256", b.binary_sha256, "code"],
+      ["Libraries", b.libraries.map((l) => JSON.stringify(l)).join("; ") || "none"],
       ["Target", b.target],
-      [
-        "Toolchain",
-        Object.entries(b.toolchain)
-          .map(([k, v]) => `${k}: ${v}`)
-          .join("; "),
-      ],
-      ["Configuration", b.configuration.summary],
-      ["Build command", b.configuration.arguments.join(" ")],
-      ["Target CPU", b.configuration.target_cpu ?? "not recorded"],
-      ["SIMD", b.configuration.simd ?? "not recorded"],
-      ["LTO", b.configuration.lto ?? "not recorded"],
-      ["PGO", b.configuration.pgo === null ? "not recorded" : b.configuration.pgo ? "yes" : "no"],
-      ["Version output (raw text, not a release proof)", b.version_output ?? "not recorded"],
+      ["Toolchain", b.toolchain.map(([k, v]) => `${k}: ${v}`).join("; ")],
+      ["Configuration", c.summary],
+      ["Build command", c.arguments.join(" "), "code"],
+      ["Target CPU", notRecorded(c.target_cpu)],
+      ["SIMD", notRecorded(c.simd)],
+      ["LTO", notRecorded(c.lto)],
+      ["PGO", c.pgo === null ? "not recorded" : c.pgo ? "yes" : "no"],
+      ["Version output (raw text, not a release proof)", notRecorded(b.version_output), "code"],
       ["Machine", machineLabel(m)],
-      ["Dataset", s.dataset_id],
+      ["Dataset", s.dataset_id, "code"],
     ];
-    const items = rows.map(([k, v]): [string, Kid] => [
-      k,
-      k === "Repository" || k === "Release page"
-        ? ext(v)
-        : /SHA|snapshot|Commit|command|output/.test(k)
-          ? code(v)
-          : v,
-    ]);
-    sec.append(
-      h(
-        "details",
-        { class: "prov", id: `build-${n}` },
-        h("summary", null, implLabel(i)),
-        kv(items),
-        copyButton(rows.map(([k, v]) => `${k}: ${v}`).join("\n"), `provenance of ${implLabel(i)}`),
-      ),
-    );
+    sec.append(provBlock(`build-${n}`, implLabel(i), rows, `provenance of ${implLabel(i)}`));
   });
 
   const fp = m.fingerprint;
@@ -1124,63 +1181,49 @@ function provenance(s: Summary, m: Machine): HTMLElement {
     fp.cpu.performance_cores !== null && `${fp.cpu.performance_cores} performance`,
     fp.cpu.efficiency_cores !== null && `${fp.cpu.efficiency_cores} efficiency`,
   ].filter(Boolean);
-  const machineRows: [string, string][] = [
-    ["Machine id", m.machine_id],
+  const machineRows: Row[] = [
+    ["Machine id", m.machine_id, "code"],
     ["Role", m.role],
     ["CPU", fp.cpu.model],
     ["Cores", cores.join(", ") || "not recorded"],
     ["ISA", fp.cpu.isa.join(", ") || "not recorded"],
     ["Architecture", fp.arch],
     ["Operating system", `${fp.os.name} ${fp.os.version}`],
-    ["Kernel", fp.os.kernel ?? "not recorded"],
+    ["Kernel", notRecorded(fp.os.kernel)],
     ["Memory", fp.memory_bytes === null ? "not recorded" : `${f0.format(fp.memory_bytes)} bytes`],
     ["Requested thread budgets", m.threads.join(", ")],
-    ["Run id", m.run_id],
+    ["Run id", m.run_id, "code"],
     ["Run state", m.run_state],
     ["Run class", m.class],
     ["Measured (UTC)", `${m.measured_utc.first} to ${m.measured_utc.last}`],
-    ["Series id", m.series_id],
-    ["Host fingerprint digest", m.fingerprint_digest],
+    ["Series id", m.series_id, "code"],
+    ["Host fingerprint digest", m.fingerprint_digest, "code"],
   ];
-  const setRows: [string, string][] = [
-    ["Dataset id", s.dataset_id],
-    ["Campaign id", s.campaign_id],
-    ["Campaign lock digest", s.lock_digest],
-    ...Object.entries(s.methodology).map(([k, v]): [string, string] => [
-      `Methodology: ${k}`,
-      String(v),
-    ]),
+  const streamRows = cases.flatMap((c): Row[] => [
+    [c.name, `${caseLabel(c)} · ${c.frames} frames · ${f0.format(c.bytes)} bytes`],
+    [`${c.name}: input SHA-256`, c.input_sha256, "code"],
+    [`${c.name}: source`, c.url, "link"],
+  ]);
+  const setRows: Row[] = [
+    ["Dataset id", s.dataset_id, "code"],
+    ["Campaign id", s.campaign_id, "code"],
+    ["Campaign lock digest", s.lock_digest, "code"],
+    ...s.methodology.map(([k, v]): Row => [`Methodology: ${k}`, String(v)]),
     ["Corpus", s.corpus.id],
-    ["Corpus digest", s.corpus.digest],
-    ["Corpus source", s.corpus.source],
+    ["Corpus digest", s.corpus.digest, "code"],
+    ["Corpus source", s.corpus.source, "link"],
     ["Reference output", s.corpus.oracle],
     ["Suite", `${s.suite.id}, ${s.suite.cases_expected} cases expected`],
     ["Aggregation", s.aggregation_version],
-    ["Harness repository", s.harness.repository],
-    ["Harness commit", s.harness.commit],
-    ["Harness snapshot", s.harness.snapshot_sha256],
+    ["Harness repository", s.harness.repository, "link"],
+    ["Harness commit", s.harness.commit, "code"],
+    ["Harness snapshot", s.harness.snapshot_sha256, "code"],
     ["Harness class", s.harness.class],
   ];
-  const block = (id: string, title: string, rows: [string, string][], what: string) =>
-    h(
-      "details",
-      { class: "prov", id },
-      h("summary", null, title),
-      kv(
-        rows.map(([k, v]) => [
-          k,
-          /source|repository/i.test(k)
-            ? ext(v)
-            : /digest|commit|snapshot|id$/i.test(k)
-              ? code(v)
-              : v,
-        ]),
-      ),
-      copyButton(rows.map(([k, v]) => `${k}: ${v}`).join("\n"), what),
-    );
   sec.append(
-    block("machine-details", `Machine: ${machineLabel(m)}`, machineRows, "machine details"),
-    block(
+    provBlock("machine-details", `Machine: ${machineLabel(m)}`, machineRows, "machine details"),
+    provBlock("streams-details", "Streams that the filters show", streamRows, "stream details"),
+    provBlock(
       "settings-details",
       "Corpus and measurement settings",
       setRows,
@@ -1191,7 +1234,6 @@ function provenance(s: Summary, m: Machine): HTMLElement {
 }
 
 function downloads(s: Summary): HTMLElement {
-  const entry = index.datasets.find((d) => d.dataset_id === s.dataset_id)!;
   const dir = datasetDir(entry);
   const file = (path: string, text: string, note?: string) =>
     h(

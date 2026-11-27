@@ -41,6 +41,23 @@ async function withData(page: Page, scenario: string) {
   });
 }
 
+type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+const full3 = "ds-f1f1f1f1f1f10003";
+
+/** Answers one data file with a changed copy of a fixture. Register after withData. */
+async function serve(page: Page, rel: string, body: string) {
+  await page.route(`${base}${rel}`, (route) =>
+    route.fulfill({ body, contentType: "text/plain; charset=utf-8", headers: cors }),
+  );
+}
+async function serveSummary(page: Page, change: (s: Json) => void, id = full3) {
+  const s = summary(id);
+  change(s);
+  await serve(page, `datasets/${id}/summary.json`, JSON.stringify(s));
+}
+const mainIndex = () =>
+  JSON.parse(readFileSync(new URL("main/index.json", fixtures), "utf8")) as Json;
+
 function watchProblems(page: Page) {
   const problems: string[] = [];
   page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
@@ -174,7 +191,7 @@ test("baseline change uses the speedups and aggregates of the dataset", async ({
     "Excluded: fixture_1920x1080_10bit_420_130f.ivf (fixture-b: unsupported)",
   );
   await expect(speedup.locator("tbody tr").first()).toContainText(
-    "Not comparable: fixture-b: unsupported",
+    `Not comparable: fixture-b 1.2.3 (${commits["fixture-b"].slice(0, 12)}): Unsupported`,
   );
   await expect(speedup.locator("tbody tr").nth(1)).toContainText("1.25×");
 });
@@ -434,3 +451,182 @@ for (const loaded of [false, true]) {
     });
   }
 }
+
+test("without latest_complete, the newest dataset is the default, with a notice", async ({
+  page,
+}) => {
+  await withData(page, "main");
+  const index = mainIndex();
+  index.latest_complete = null;
+  index.datasets.reverse();
+  await serve(page, "index.json", JSON.stringify(index));
+  await page.goto("/benchmarks/");
+  await expect(page.locator("#f-dataset")).toHaveValue("ds-f1f1f1f1f1f10004");
+  await expect(page.locator('[data-banner="note"]')).toContainText(
+    "No complete official dataset is marked as current.",
+  );
+  await expect(page.locator("#view-throughput")).toBeVisible();
+});
+
+test("latest_complete must name a complete official dataset", async ({ page }) => {
+  await withData(page, "main");
+  const index = mainIndex();
+  index.latest_complete = full3; // synthetic
+  await serve(page, "index.json", JSON.stringify(index));
+  await page.goto("/benchmarks/");
+  await expect(status(page)).toHaveAttribute("data-state", "error");
+  await expect(status(page)).toContainText("does not name a complete official dataset");
+});
+
+test('origin "local" shows the "Not official data" banner', async ({ page }) => {
+  await withData(page, "main");
+  await serveSummary(page, (s) => (s.origin = "local"));
+  await page.goto(full);
+  await expect(page.locator('[data-banner="origin"]')).toContainText("Not official data.");
+  await expect(page.locator('[data-banner="origin"]')).toContainText('"local"');
+});
+
+const invalid: [string, (s: Json) => void, string][] = [
+  [
+    "a failed cell with a frame rate",
+    (s) => (s.cells.find((c: Json) => c.status !== "ok").fps_median = 100),
+    "and the metric fps_median",
+  ],
+  [
+    "a release identity without a release",
+    (s) => (s.implementations[1].release = null),
+    'release must be set exactly when the identity is "release"',
+  ],
+  [
+    "a development identity with a release build origin",
+    (s) => (s.implementations[0].build_origin = "source-release"),
+    "does not match the identity",
+  ],
+  [
+    "a release identity built from development source",
+    (s) => (s.implementations[1].build_origin = "source-development"),
+    "does not match the identity",
+  ],
+  ["a cell with an unknown build", (s) => (s.cells[0].build_id = "bld-0000000000000000"), "build"],
+  [
+    "a cell with an unknown case",
+    (s) => (s.cells[0].case_id = "no-case"),
+    'unknown case "no-case"',
+  ],
+  [
+    "a cell with an unknown machine",
+    (s) => (s.cells[0].machine_id = "no-machine"),
+    'unknown machine "no-machine"',
+  ],
+  [
+    "a cell with an unknown implementation",
+    (s) => (s.cells[0].implementation = "no-decoder"),
+    'unknown implementation "no-decoder"',
+  ],
+  [
+    "a duplicate case id",
+    (s) => (s.cases[1].id = s.cases[0].id),
+    "summary.cases has the duplicate entry",
+  ],
+  [
+    "a cell with a thread budget its machine does not list",
+    (s) => (s.cells[0].threads = 3),
+    "thread budget that its machine does not list",
+  ],
+  [
+    "an oversized list",
+    (s) => (s.machines[0].threads = Array.from({ length: 17 }, (_, i) => i + 1)),
+    "has more than 16 entries",
+  ],
+];
+for (const [name, change, message] of invalid) {
+  test(`invalid data: ${name}`, async ({ page }) => {
+    await withData(page, "main");
+    await serveSummary(page, change);
+    await page.goto(full);
+    await expect(status(page)).toHaveAttribute("data-state", "error");
+    await expect(status(page)).toContainText(message);
+    await expect(page.locator("#view-throughput")).toHaveCount(0);
+  });
+}
+
+test("oversized index list and oversized file are refused", async ({ page }) => {
+  await withData(page, "main");
+  const index = mainIndex();
+  index.latest_complete = null;
+  index.datasets = Array.from({ length: 1001 }, (_, i) => ({
+    ...index.datasets[1],
+    dataset_id: `ds-${String(i).padStart(16, "0")}`,
+  }));
+  await serve(page, "index.json", JSON.stringify(index));
+  await page.goto("/benchmarks/");
+  await expect(status(page)).toContainText("index.datasets has more than 1000 entries.");
+
+  await withData(page, "main");
+  await serve(page, `datasets/${full3}/summary.json`, `{${" ".repeat(5_000_001)}}`);
+  await page.goto(full);
+  await expect(status(page)).toContainText("is larger than 5 MB.");
+});
+
+test("an expected machine role without results is named", async ({ page }) => {
+  await withData(page, "main");
+  await serveSummary(page, (s) => {
+    const arm = "fixture-arm-01";
+    s.machines = s.machines.filter((m: Json) => m.machine_id !== arm);
+    for (const k of ["builds", "cells", "speedups", "aggregates"]) {
+      s[k] = s[k].filter((x: Json) => x.machine_id !== arm);
+    }
+    s.complete = false;
+    s.coverage.roles_present = ["x86-64"];
+  });
+  await page.goto(full);
+  const banner = page.locator('[data-banner="partial"]');
+  await expect(banner).toContainText("No results exist for the expected machine roles arm64");
+  await expect(banner).toContainText("Of 48 expected results: 43 ok");
+  await expect(page.locator("#f-machine option")).toHaveCount(1);
+});
+
+test("a release URL that is not https is shown as text", async ({ page }) => {
+  await withData(page, "main");
+  await serveSummary(page, (s) => (s.implementations[1].release.url = "http://example.com/v1"));
+  await page.goto(`${full}&machine=fixture-arm-01`);
+  const b = page.locator("details.prov", {
+    has: page.locator("summary", { hasText: /^fixture-b/ }),
+  });
+  await b.locator("summary").click();
+  await expect(b).toContainText("http://example.com/v1");
+  await expect(b.locator('a[href^="http:"]')).toHaveCount(0);
+});
+
+test("stream details show the input identity", async ({ page }) => {
+  await withData(page, "main");
+  await page.goto(`${full}&depth=8&q=1280`);
+  const d = page.locator("#streams-details");
+  await d.locator("summary").click();
+  const c = summary(full3).cases.find((x: Json) => x.id === "fixture-720p-8bit");
+  await expect(d).toContainText(c.input_sha256);
+  await expect(d).toContainText("130 frames");
+  await expect(d.getByRole("link", { name: c.url })).toHaveAttribute("href", c.url);
+});
+
+test("the filters work with the keyboard", async ({ page }) => {
+  await withData(page, "main");
+  await page.goto(`${full}&machine=fixture-arm-01&depth=8`);
+  const rows = page.locator("#view-throughput tbody tr");
+  await expect(rows).toHaveCount(6);
+  await page.locator("#f-q").focus();
+  await page.keyboard.type("1280");
+  await expect(page.locator("#view-throughput tbody")).toHaveCount(1);
+  await expect(page.locator("#f-q")).toBeFocused();
+  const box = page.getByRole("checkbox", { name: /^fixture-c/ });
+  await box.focus();
+  await page.keyboard.press("Space");
+  await expect(box).not.toBeChecked();
+  await expect(rows).toHaveCount(2);
+  await page.locator("#machine-details summary").focus();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#machine-details")).toHaveAttribute("open", "");
+  const region = page.getByRole("region", { name: "Throughput table" });
+  await region.focus();
+  await expect(region).toBeFocused();
+});
