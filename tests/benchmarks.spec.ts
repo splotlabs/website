@@ -394,8 +394,17 @@ test("unsupported data versions and kinds have their own state", async ({ page }
   await page.goto(`/benchmarks/?dataset=${DS2}`);
   await expect(status(page)).toHaveAttribute("data-state", "unsupported");
   await expect(status(page)).toContainText("splotbench.summary/2");
+  await expect(status(page)).toContainText(
+    "This page does not support the data version of this dataset.",
+  );
   await page.locator("#f-dataset").selectOption(DS3);
   await expect(status(page)).toContainText('the workload kind "encode"');
+  await expect(status(page)).toContainText("This page does not support this kind of data.");
+  await expect(status(page).getByRole("link", { name: "Dataset index" })).toHaveAttribute(
+    "href",
+    `${base}index.json`,
+  );
+  await expect(status(page)).not.toContainText("downloads");
   await page.locator("#f-dataset").selectOption(DS1);
   await expect(status(page)).toBeHidden();
   await expect(page.locator("#view-throughput")).toBeVisible();
@@ -845,8 +854,9 @@ for (const id of [DS1, DS2, DS3, DS4]) {
       const text = await page.locator("#bench-app").innerText();
       expect(text, path).not.toMatch(/\b(null|undefined|NaN)\b/);
     }
-    // Fast navigation cancels requests (for example the favicon). Console and page errors count.
-    expect(problems.filter((p) => !p.startsWith("failed: "))).toEqual([]);
+    // Fast navigation cancels requests for the page's own assets (for example the favicon).
+    // A failed request to the data origin still counts.
+    expect(problems.filter((p) => !p.startsWith(`failed: ${origin}/`))).toEqual([]);
   });
 }
 
@@ -927,6 +937,7 @@ test("an index entry with another workload is not loaded", async ({ page }) => {
   await page.goto(`/benchmarks/?dataset=${DS2}`);
   await expect(status(page)).toHaveAttribute("data-state", "unsupported");
   await expect(status(page)).toContainText('the workload "encode"');
+  await expect(status(page)).toContainText("This page does not support this kind of data.");
   expect(loaded).toEqual([]);
 });
 
@@ -960,13 +971,17 @@ test("thread budgets are neutral; more than three decoders stay distinguishable"
 }) => {
   await withData(page);
   await serveSummary(page, (s) => {
+    // Four copies of fixture-a: seven decoders in all.
     const builds = s.builds.filter((b: Json) => b.implementation === "fixture-a");
-    const id = (b: string) => `${b.slice(0, -4)}dddd`;
-    s.implementations.push({ ...impl("fixture-a", s), id: "fixture-d", name: "Fixture D" });
-    for (const b of builds)
-      s.builds.push({ ...b, implementation: "fixture-d", build_id: id(b.build_id) });
-    for (const c of s.cells.filter((x: Json) => x.implementation === "fixture-a")) {
-      s.cells.push({ ...c, implementation: "fixture-d", build_id: id(c.build_id) });
+    const cells = s.cells.filter((x: Json) => x.implementation === "fixture-a");
+    for (const x of ["d", "e", "f", "g"]) {
+      const id = (b: string) => `${b.slice(0, -4)}${x.repeat(4).replace(/[^a-f]/g, "0")}`;
+      const decoder = `fixture-${x}`;
+      s.implementations.push({ ...impl("fixture-a", s), id: decoder, name: `Fixture ${x}` });
+      for (const b of builds)
+        s.builds.push({ ...b, implementation: decoder, build_id: id(b.build_id) });
+      for (const c of cells)
+        s.cells.push({ ...c, implementation: decoder, build_id: id(c.build_id) });
     }
   });
   await page.goto(`${full}&machine=${ARM}&depth=8`);
@@ -975,7 +990,10 @@ test("thread budgets are neutral; more than three decoders stay distinguishable"
   await expect(scaling.locator("g.row.s0, g.row.s1, g.row.s2")).toHaveCount(0);
   const throughput = page.locator("#view-throughput .chart");
   await expect(throughput.locator("g.row.s0.alt").first()).toBeVisible();
-  await expect(throughput.locator("text.lbl", { hasText: "Fixture D" }).first()).toBeVisible();
+  await expect(throughput.locator("text.lbl", { hasText: "Fixture d" }).first()).toBeVisible();
+  await expect(page.locator("#view-throughput .note")).toContainText(
+    "Bar styles repeat after six decoders. The name beside each bar identifies the decoder.",
+  );
 });
 
 test("the history header names the decoders", async ({ page }) => {

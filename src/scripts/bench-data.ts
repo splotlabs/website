@@ -196,7 +196,15 @@ export interface Coverage {
 /** The data breaks the contract. */
 export class DataError extends Error {}
 /** The data is valid for a version or workload kind that this page does not support. */
-export class UnsupportedError extends Error {}
+export class UnsupportedError extends Error {
+  /** "workload": another kind of data. "version": another version of decode data. */
+  constructor(
+    message: string,
+    readonly cause: "version" | "workload" = "version",
+  ) {
+    super(message);
+  }
+}
 
 type Json = Record<string, unknown>;
 
@@ -383,7 +391,9 @@ export function parseSummary(raw: unknown, expected: Expected): Summary {
   const o = obj(raw, "summary");
   schema(o, "summary");
   const kind = str(obj(o.workload, "summary.workload"), "kind", "summary.workload");
-  if (kind !== "decode") throw new UnsupportedError(`The dataset has the workload kind "${kind}".`);
+  if (kind !== "decode") {
+    throw new UnsupportedError(`The dataset has the workload kind "${kind}".`, "workload");
+  }
   const at = "summary";
   const dataset_id = str(o, "dataset_id", at);
   if (dataset_id !== expected.dataset_id) {

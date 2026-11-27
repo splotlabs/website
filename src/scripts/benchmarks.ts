@@ -177,13 +177,14 @@ const largest = (xs: number[]) => xs.reduce((a, b) => (b > a ? b : a), 0);
 
 // ---------- States ----------
 
-function state(kind: string, title: string, detail = "") {
+function state(kind: string, title: string, detail = "", link = false) {
   if (!statusEl) return;
   statusEl.dataset.state = kind;
   statusEl.hidden = kind === "loaded";
   statusEl.replaceChildren(
     h("p", { class: "bench-state" }, title),
     detail ? h("p", null, detail) : "",
+    link ? h("p", null, h("a", { href: new URL("index.json", base).href }, "Dataset index")) : "",
   );
 }
 
@@ -191,11 +192,14 @@ function fail(e: unknown) {
   if (e instanceof UnsupportedError) {
     state(
       "unsupported",
-      "This page does not support the data version of this dataset.",
-      `${e.message} The raw data in the downloads stays available.`,
+      e.cause === "workload"
+        ? "This page does not support this kind of data."
+        : "This page does not support the data version of this dataset.",
+      e.message,
+      true,
     );
   } else if (e instanceof DataError || e instanceof HttpError) {
-    state("error", "The results could not be loaded.", e.message);
+    state("error", "The results could not be loaded.", e.message, true);
   } else {
     state("error", "The results could not be loaded.", "The data request failed.");
   }
@@ -311,7 +315,7 @@ async function selectDataset(id: string, params: URLSearchParams, note = "") {
   try {
     // The index schema allows only decode. Another workload is not loaded as decode data.
     if (entry.workload !== "decode") {
-      throw new UnsupportedError(`The dataset has the workload "${entry.workload}".`);
+      throw new UnsupportedError(`The dataset has the workload "${entry.workload}".`, "workload");
     }
     s = await loadSummary(entry);
   } catch (e) {
@@ -571,6 +575,11 @@ function views(s: Summary): HTMLElement[] {
   );
   const impls = s.implementations.filter((i) => view.decoders.includes(i.id));
   const keys = s.implementations.map((i) => i.id);
+  // Six decoders have distinct bar styles. Beyond six the styles repeat; the names identify them.
+  const repeats =
+    keys.length > 6
+      ? " Bar styles repeat after six decoders. The name beside each bar identifies the decoder."
+      : "";
   const cell = (caseId: string, impl: string, threads = view.threads) =>
     cellOf(s, m.machine_id, caseId, threads, impl);
   const buildIndex = (b: Build | undefined) => (b ? s.builds.indexOf(b) : -1);
@@ -591,7 +600,7 @@ function views(s: Summary): HTMLElement[] {
 
   // Throughput
   const throughput = section("throughput", "Throughput", [
-    `Median frames/s of the valid repetitions. Higher is better. ${scope}.`,
+    `Median frames/s of the valid repetitions. Higher is better. ${scope}.${repeats}`,
   ]);
   if (empty) throughput.append(h("p", null, empty));
   else {
@@ -694,7 +703,7 @@ function views(s: Summary): HTMLElement[] {
   // Speedup
   const others = impls.filter((i) => i.id !== view.baseline);
   const speedup = section("speedup", "Speedup", [
-    `Throughput ratio against the baseline ${label(view.baseline)}. A ratio above 1 means more frames/s than the baseline. A stream has a ratio only when both decoders gave correct, measured results. ${scope}.`,
+    `Throughput ratio against the baseline ${label(view.baseline)}. A ratio above 1 means more frames/s than the baseline. A stream has a ratio only when both decoders gave correct, measured results. ${scope}.${repeats}`,
   ]);
   if (empty || !others.length) {
     speedup.append(h("p", null, empty || "Select a decoder other than the baseline."));
@@ -983,8 +992,10 @@ function chartBox(groups: Group[], keys: string[] = [], ref?: number): HTMLEleme
       root.append(label);
       y += 22;
       g.bars.forEach((b, i) => {
-        // Decoders keep one color each. The fourth to sixth decoder repeat the colors with a
-        // hatched outline, and every bar has its decoder name as text. Other series are neutral.
+        // Decoders keep one style each: three colors, then the same colors dashed. Neighbours
+        // always differ in color; from the seventh decoder on the styles repeat, and the name
+        // beside each bar (and a note in the view text) identifies the decoder. Other series
+        // are neutral.
         const n = b.key === undefined ? -1 : keys.indexOf(b.key);
         const style = n < 0 ? "sn" : `s${n % 3}${Math.floor(n / 3) % 2 ? " alt" : ""}`;
         const row = svg("g", { class: `row ${style}` });
