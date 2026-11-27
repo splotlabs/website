@@ -579,10 +579,26 @@ test("latest_complete must name a complete official dataset", async ({ page }) =
 
 test('origin "local" shows the "Not official data" banner', async ({ page }) => {
   await withData(page);
+  await serveIndex(page, (i) => (i.datasets[0].origin = "local"));
   await serveSummary(page, (s) => (s.origin = "local"));
   await page.goto(full);
-  await expect(page.locator('[data-banner="origin"]')).toContainText("Not official data.");
-  await expect(page.locator('[data-banner="origin"]')).toContainText('"local"');
+  const banner = page.locator('[data-banner="origin"]');
+  await expect(banner).toContainText("Not official data.");
+  await expect(banner).toContainText('"local"');
+  // The banner is above the filter panel.
+  expect(
+    await banner.evaluate(
+      (b) => !!(b.compareDocumentPosition(document.querySelector(".filters")!) & 4),
+    ),
+  ).toBe(true);
+});
+
+test("a summary that differs from its index entry is invalid data", async ({ page }) => {
+  await withData(page);
+  await serveSummary(page, (s) => (s.origin = "local"));
+  await page.goto(full);
+  await expect(status(page)).toHaveAttribute("data-state", "error");
+  await expect(status(page)).toContainText("differs from the index entry");
 });
 
 const invalid: [string, (s: Json) => void, string][] = [
@@ -756,3 +772,215 @@ for (const loaded of [false, true]) {
     });
   }
 }
+
+// Fields that splotlabs/benchmarks allows as null: schemas/summary.schema.json and the
+// definitions it uses in schemas/common.schema.json. "*" is every element of a list. The
+// release object itself is nullable too, but only together with a development identity, so it
+// is covered by the identity tests.
+const nullable = [
+  "machines.*.measured_utc.first",
+  "machines.*.measured_utc.last",
+  "machines.*.fingerprint.os.version",
+  "machines.*.fingerprint.os.kernel",
+  "machines.*.fingerprint.cpu.model",
+  "machines.*.fingerprint.cpu.physical_cores",
+  "machines.*.fingerprint.cpu.logical_cores",
+  "machines.*.fingerprint.cpu.performance_cores",
+  "machines.*.fingerprint.cpu.efficiency_cores",
+  "machines.*.fingerprint.memory_bytes",
+  "machines.*.fingerprint.python",
+  "machines.*.fingerprint.power",
+  "machines.*.fingerprint.affinity",
+  "implementations.*.release.url",
+  "builds.*.version_output",
+  "cases.*.film_grain",
+  "cells.*.build_id",
+  "cells.*.frames",
+  "cells.*.wall_ns_median",
+  "cells.*.fps_median",
+  "cells.*.fps_min",
+  "cells.*.fps_max",
+  "cells.*.fps_mad",
+  "cells.*.cpu_ns_median",
+  "cells.*.peak_rss_bytes_median",
+  "cells.*.first_frame_latency_ns",
+  "cells.*.scaling_vs_1t",
+  "aggregates.*.geomean_ratio",
+  "aggregation.harness.commit",
+];
+// The same for schemas/index.schema.json, which the page reads but does not show.
+const nullableIndex = ["datasets.*.measured_utc.first", "datasets.*.measured_utc.last"];
+
+function setNull(node: Json, path: string[]) {
+  const [key, ...rest] = path;
+  if (node === null || typeof node !== "object") return;
+  if (key === "*") return node.forEach((x: Json) => setNull(x, rest));
+  if (!rest.length) node[key] = null;
+  else setNull(node[key], rest);
+}
+
+for (const id of [DS1, DS2, DS3, DS4]) {
+  test(`every schema-nullable field may be null: ${id}`, async ({ page }) => {
+    const problems = watchProblems(page);
+    await withData(page);
+    let body = "";
+    await page.route(`${base}datasets/${id}/summary.json`, (route) =>
+      route.fulfill({ body, contentType: "text/plain; charset=utf-8", headers: cors }),
+    );
+    const index = indexJson();
+    for (const path of nullableIndex) setNull(index, path.split("."));
+    await serve(page, "index.json", JSON.stringify(index));
+    for (const path of nullable) {
+      const s = summary(id);
+      setNull(s, path.split("."));
+      body = JSON.stringify(s);
+      await page.goto(`/benchmarks/?dataset=${id}`);
+      await expect(page.locator("#view-throughput"), path).toBeVisible();
+      await page.evaluate(() =>
+        document.querySelectorAll("details.prov").forEach((d) => d.setAttribute("open", "")),
+      );
+      const text = await page.locator("#bench-app").innerText();
+      expect(text, path).not.toMatch(/\b(null|undefined|NaN)\b/);
+    }
+    // Fast navigation cancels the favicon request. That is not a page problem.
+    expect(problems.filter((p) => !p.endsWith("/favicon.svg"))).toEqual([]);
+  });
+}
+
+test("null facts are shown as not known or not recorded", async ({ page }) => {
+  await withData(page);
+  await serveSummary(page, (s) => {
+    for (const m of s.machines) {
+      m.fingerprint.cpu.model = null;
+      m.fingerprint.os.version = null;
+      m.measured_utc = { first: null, last: null };
+    }
+    impl("fixture-b", s).release.url = null;
+    s.aggregation.harness.commit = null;
+  });
+  await page.goto(`${full}&machine=${ARM}`);
+  await expect(page.locator("#f-machine option").first()).toHaveText(
+    `CPU model not known · FixtureOS (version not known) · aarch64 (${ARM})`,
+  );
+  await page.evaluate(() =>
+    document.querySelectorAll("details.prov").forEach((d) => d.setAttribute("open", "")),
+  );
+  const row = (box: string, key: string) =>
+    page.locator(`${box} .kv div`, {
+      has: page.locator("dt", { hasText: new RegExp(`^${key}$`) }),
+    });
+  await expect(row("#machine-details", "CPU").locator("dd")).toHaveText("not recorded");
+  await expect(row("#machine-details", "Measured \\(UTC\\)").locator("dd")).toHaveText(
+    "not measured",
+  );
+  await expect(row("#settings-details", "Harness commit").locator("dd")).toHaveText("not recorded");
+  const b = page.locator("details.prov", {
+    has: page.locator("summary", { hasText: label("fixture-b") }),
+  });
+  await expect(row(`#${await b.getAttribute("id")}`, "Release page").locator("dd")).toHaveText(
+    "not recorded",
+  );
+});
+
+test("other enum values of the schema are shown", async ({ page }) => {
+  const problems = watchProblems(page);
+  await withData(page);
+  await serveSummary(page, (s) => {
+    s.machines[0].run_state = "in-progress";
+    s.machines[0].class = "verified";
+    s.builds[0].class = "development";
+    s.cases[0].chroma = "4:0:0";
+    s.cases[0].bit_depth = 12;
+  });
+  await page.goto(`${full}&machine=${ARM}`);
+  await expect(page.locator('[data-banner="partial"]')).toContainText(`${ARM}: run in-progress.`);
+  await expect(page.locator("#f-depth option")).toHaveText(["8-bit", "10-bit", "12-bit"]);
+  await page.locator("#f-depth").selectOption("12");
+  await expect(page.locator("#view-throughput tbody th").first()).toContainText("4:0:0");
+  expect(problems).toEqual([]);
+});
+
+const unsupported: [string, (s: Json) => void, string][] = [
+  ["another methodology", (s) => (s.methodology.id = "decode-cli-wall/2"), "decode-cli-wall/2"],
+  ["another output policy", (s) => (s.methodology.output_policy = "raw"), "output_policy"],
+  ["another aggregation", (s) => (s.aggregation.version = "summary/2"), "summary/2"],
+  ["another metric unit", (s) => (s.metrics.peak_rss.unit = "KiB"), "peak_rss is not bytes"],
+];
+for (const [name, change, message] of unsupported) {
+  test(`unsupported data: ${name}`, async ({ page }) => {
+    await withData(page);
+    await serveSummary(page, change);
+    await page.goto(full);
+    await expect(status(page)).toHaveAttribute("data-state", "unsupported");
+    await expect(status(page)).toContainText(message);
+  });
+}
+
+test("an index entry with another workload is not loaded", async ({ page }) => {
+  await withData(page);
+  await serveIndex(page, (i) => (i.datasets[1].workload = "encode"));
+  const loaded: string[] = [];
+  page.on("request", (r) => r.url().includes(`${DS2}/summary.json`) && loaded.push(r.url()));
+  await page.goto(`/benchmarks/?dataset=${DS2}`);
+  await expect(status(page)).toHaveAttribute("data-state", "unsupported");
+  await expect(status(page)).toContainText('the workload "encode"');
+  expect(loaded).toEqual([]);
+});
+
+test("relative paths follow the schema and stay inside the dataset", async ({ page }) => {
+  await withData(page);
+  await serveSummary(page, (s) => (s.machines[0].bundle.path = "bundles/run+1.tar.gz"));
+  await page.goto(full);
+  await expect(
+    page.locator("#view-downloads").getByRole("link", { name: `Raw bundle: ${ARM} (arm64)` }),
+  ).toHaveAttribute("href", `${base}datasets/${DS1}/bundles/run+1.tar.gz`);
+  for (const path of ["%2e%2e/%2e%2e/x", "https://example.com/x", "/x", "a/../../x"]) {
+    await serveSummary(page, (s) => (s.machines[0].bundle.path = path));
+    await page.goto(full);
+    await expect(status(page), path).toHaveAttribute("data-state", "error");
+  }
+});
+
+test("stream details show film grain", async ({ page }) => {
+  await withData(page);
+  await page.goto(`${full}&depth=8&q=720`);
+  const c = s1.cases.find((x: Json) => x.id === "example-720p-8bit");
+  const expected = c.film_grain === null ? "not known" : c.film_grain ? "yes" : "no";
+  await page.locator("#streams-details summary").click();
+  await expect(
+    page.locator("#streams-details .kv div", { hasText: `${c.name}: film grain` }).locator("dd"),
+  ).toHaveText(expected);
+});
+
+test("thread budgets are neutral; more than three decoders stay distinguishable", async ({
+  page,
+}) => {
+  await withData(page);
+  await serveSummary(page, (s) => {
+    const builds = s.builds.filter((b: Json) => b.implementation === "fixture-a");
+    const id = (b: string) => `${b.slice(0, -4)}dddd`;
+    s.implementations.push({ ...impl("fixture-a", s), id: "fixture-d", name: "Fixture D" });
+    for (const b of builds)
+      s.builds.push({ ...b, implementation: "fixture-d", build_id: id(b.build_id) });
+    for (const c of s.cells.filter((x: Json) => x.implementation === "fixture-a")) {
+      s.cells.push({ ...c, implementation: "fixture-d", build_id: id(c.build_id) });
+    }
+  });
+  await page.goto(`${full}&machine=${ARM}&depth=8`);
+  const scaling = page.locator("#view-scaling .chart");
+  await expect(scaling.locator("g.row.sn").first()).toBeVisible();
+  await expect(scaling.locator("g.row.s0, g.row.s1, g.row.s2")).toHaveCount(0);
+  const throughput = page.locator("#view-throughput .chart");
+  await expect(throughput.locator("g.row.s0.alt").first()).toBeVisible();
+  await expect(throughput.locator("text.lbl", { hasText: "Fixture D" }).first()).toBeVisible();
+});
+
+test("the history header names the decoders", async ({ page }) => {
+  await withData(page);
+  await page.goto(`${full}&machine=${X86}`);
+  await page.locator("#bench-history summary").click();
+  await expect(page.locator("#bench-history thead th")).toHaveText([
+    "Dataset",
+    ...["fixture-a", "fixture-b", "fixture-c"].map((x) => impl(x).name),
+  ]);
+});
