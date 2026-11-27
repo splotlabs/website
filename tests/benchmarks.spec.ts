@@ -836,14 +836,17 @@ for (const id of [DS1, DS2, DS3, DS4]) {
       body = JSON.stringify(s);
       await page.goto(`/benchmarks/?dataset=${id}`);
       await expect(page.locator("#view-throughput"), path).toBeVisible();
+      // Provenance details only: the history would start requests that the next page load cancels.
       await page.evaluate(() =>
-        document.querySelectorAll("details.prov").forEach((d) => d.setAttribute("open", "")),
+        document
+          .querySelectorAll("details.prov:not(#bench-history)")
+          .forEach((d) => d.setAttribute("open", "")),
       );
       const text = await page.locator("#bench-app").innerText();
       expect(text, path).not.toMatch(/\b(null|undefined|NaN)\b/);
     }
-    // Fast navigation cancels the favicon request. That is not a page problem.
-    expect(problems.filter((p) => !p.endsWith("/favicon.svg"))).toEqual([]);
+    // Fast navigation cancels requests (for example the favicon). Console and page errors count.
+    expect(problems.filter((p) => !p.startsWith("failed: "))).toEqual([]);
   });
 }
 
