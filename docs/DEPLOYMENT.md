@@ -81,6 +81,39 @@ GitHub Actions runs checks only. It does not deploy. A passed GitHub check does 
 Workers Builds wait, so the build command contains the checks. The browser tests run only in
 GitHub Actions, and the ruleset makes them a condition of the merge.
 
+## Benchmark data origin
+
+The benchmarks page (`/benchmarks/`) reads `index.json`, and then the `summary.json` of the
+selected dataset, in the browser. There is no bucket, no storage domain and no CORS rule to
+manage. The published datasets are files in the `published/` directory of
+[splotlabs/benchmarks](https://github.com/splotlabs/benchmarks), and the page reads them through
+the raw file host of GitHub:
+
+| Item                        | Value                                                                    |
+| --------------------------- | ------------------------------------------------------------------------ |
+| `benchmarks.dataBase`       | `https://raw.githubusercontent.com/splotlabs/benchmarks/main/published/` |
+| Index                       | `<dataBase>index.json`                                                   |
+| Dataset                     | `<dataBase>datasets/<dataset_id>/summary.json` and its download files    |
+| `connect-src` in `_headers` | `'self'` and the same URL, as a path-scoped source                       |
+
+Publication is a pull request in splotlabs/benchmarks that adds a dataset directory and updates
+`published/index.json`. The website needs no change and no deployment for a new dataset. When
+the index lists no dataset, the page shows "Results are not published yet." When the index
+cannot be loaded, the page shows the load error state and the static methodology text.
+
+Properties of the raw file host that the page must tolerate:
+
+- It serves JSON as `text/plain`. The page parses the body and does not check the content type.
+- It serves the bundles and the other download files as ordinary downloads. The download links
+  are navigations, so they need no `connect-src` entry.
+- It caches responses for some minutes. A merged publication can take that long to appear.
+- It sends an open CORS header, and the page sends no credentials (`credentials: "omit"`).
+
+To change the data base, make two edits in one pull request: set `benchmarks.dataBase` in
+`src/data/site.ts` (an https URL with a final `/`), and put the same URL in `connect-src` in
+`public/_headers`. Do not add other sources. The test "connect-src names exactly the data base"
+in `tests/benchmarks.spec.ts` fails when the two do not agree.
+
 ## Roll back the content
 
 List the versions, then roll back to a known-good version:

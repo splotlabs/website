@@ -20,6 +20,7 @@ export const nav = [
   { href: "/#capabilities", label: "Capabilities" },
   { href: "/#install", label: "Install" },
   { href: "/#status", label: "Status" },
+  { href: "/benchmarks/", label: "Benchmarks" },
 ];
 
 export const workflow = [
@@ -52,3 +53,14 @@ export const cApi = [
   "splot_drain",
   "splot_close",
 ];
+
+// The benchmarks page reads the published datasets of the benchmarks harness.
+// See "Benchmark data origin" in docs/DEPLOYMENT.md before you change dataBase:
+// connect-src in public/_headers must name the same URL.
+export const benchmarks = {
+  // The directory that contains index.json, with a final "/".
+  dataBase: "https://raw.githubusercontent.com/splotlabs/benchmarks/main/published/",
+  repo: "https://github.com/splotlabs/benchmarks",
+  methodology: "https://github.com/splotlabs/benchmarks/blob/main/docs/METHODOLOGY.md",
+  reproduce: "https://github.com/splotlabs/benchmarks/blob/main/docs/REPRODUCE.md",
+};

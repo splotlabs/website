@@ -87,6 +87,35 @@ resolver still had a cached negative answer for the new record.
 4. The open mobile menu was translucent, and the text below it showed through.
 5. The command panel blur caused 410 ms of blocking time in the mobile Lighthouse run.
 
+## Benchmarks page (2026-11-27)
+
+Subject: the production build with the real `benchmarks.dataBase` and the real `_headers`, served
+by the project Wrangler. The tests use no real network: Playwright aborts every request outside
+the local server and answers the data base URL with `page.route` from the synthetic fixtures in
+`tests/fixtures/` (as `text/plain`, like the raw file host). The benchmarks harness generated
+the fixtures at commit `206eb6294206218a639137f1422eadf72647c39b`
+(`python3 tests/make_viewer_fixtures.py`). Official, local and invalid data are in-memory changes
+of these files in the tests. The fixtures are not in `dist/`.
+
+| Check                                                                                    | Method               | Result       |
+| ---------------------------------------------------------------------------------------- | -------------------- | ------------ |
+| Empty index: "Results are not published yet.", only the index is requested               | Playwright, mock     | Passed       |
+| Index fetch fails (HTTP 500, invalid JSON, 404): error state, methodology stays          | Playwright, mock     | Passed       |
+| `connect-src` names exactly the data base                                                | Playwright, headers  | Passed       |
+| CSP allows the data base and blocks a sibling path of the same host (violation event)    | Playwright           | Passed       |
+| Filters, URL state, baseline change, failed cells, null metrics, thread scaling, history | Playwright, fixtures | Passed       |
+| Unsupported index, summary and workload versions; invalid data                           | Playwright, fixtures | Passed       |
+| Download links, provenance details, copy action, synthetic and partial banners           | Playwright, fixtures | Passed       |
+| Each generated dataset loads, no console errors and no CSP violations                    | Playwright           | Passed       |
+| Default without `latest_complete`, partial coverage text, history by `series_id`         | Playwright, fixtures | Passed       |
+| No horizontal overflow at 320, 390, 768 and 1440 px, empty and loaded                    | Playwright           | Passed       |
+| Automated accessibility (same rules as above), empty and loaded, 390 and 1440 px         | axe-core             | 0 violations |
+| Usable without JavaScript                                                                | Playwright           | Passed       |
+| Benchmarks page JavaScript                                                               | gzip size            | 12.2 kB      |
+
+Not run: a fetch from the real raw file host, real published data, Firefox, Safari, real phones
+and a screen reader session.
+
 ## Brand fidelity
 
 Compared with `docs/assets/hero.svg` at the recorded upstream commit:

@@ -1,0 +1,98 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { benchmarks } from "../data/site";
+
+// Claims on this page: see "Benchmarks page" in docs/CONTENT-SOURCES.md.
+const description =
+  "AV2 decoder benchmarks from the splotlabs/benchmarks harness, with the exact source, build, binary and machine of each result. Pre-alpha.";
+const indexUrl = new URL("index.json", benchmarks.dataBase);
+---
+
+<BaseLayout title="AV2 decoder benchmarks — splot" description={description}>
+  <section class="hero">
+    <p class="pill">
+      <span class="dot"></span>Pre-alpha · Decoder benchmarks
+    </p>
+    <h1 class="solo">AV2 decoder benchmarks.</h1>
+    <p class="lead">
+      Decode speed of AV2 decoders on named machines. Each result shows the exact source, build,
+      binary and machine that produced it.
+    </p>
+  </section>
+
+  <section class="section" id="results" aria-labelledby="results-h">
+    <h2 id="results-h">Results.</h2>
+    <div class="bench">
+      <div id="bench-status" class="bench-status" role="status" data-state="static">
+        <p class="bench-state">The interactive results need JavaScript.</p>
+        <p>
+          You can read the published data directly: <a href={indexUrl}>the dataset index</a>. Read
+          how the results are measured below.
+        </p>
+      </div>
+      <div id="bench-app" class="bench-app" hidden></div>
+    </div>
+  </section>
+
+  <section class="section" id="method" aria-labelledby="method-h">
+    <h2 id="method-h">
+      How it is measured. <span>And how to repeat it.</span>
+    </h2>
+    <div class="grid">
+      <article class="card">
+        <p class="eyebrow c1">Measure</p>
+        <h3>One timing boundary.</h3>
+        <p>
+          The harness measures the wall-clock time of the decoder command line. The timed pass
+          decodes each stream, applies film grain and writes no output. A separate pass without
+          timing checks the output of each decoder against the reference output. On each machine,
+          the measured cases run one at a time.
+        </p>
+      </article>
+      <article class="card">
+        <p class="eyebrow c2">Compare</p>
+        <h3>Like with like.</h3>
+        <p>
+          Each result belongs to one physical machine. ARM and x86 results are never combined. 8-bit
+          and 10-bit streams are never mixed in one aggregate. A speedup uses only the streams where
+          both decoders gave correct output, and the page shows how many matched. A failed stream
+          shows its status, never a zero value.
+        </p>
+      </article>
+      <article class="card">
+        <p class="eyebrow c3">Identify</p>
+        <h3>The exact build.</h3>
+        <p>
+          Each result names the source repository and the full commit of the decoder. It names a
+          release only when the harness verified that the commit is that release. It also shows the
+          build origin, the build configuration, the SHA-256 of the binary and the machine. A local
+          build of release source is not an official release binary.
+        </p>
+      </article>
+      <article class="card">
+        <p class="eyebrow">Repeat</p>
+        <h3>Raw data and steps.</h3>
+        <p>
+          The harness, the methodology and the steps to repeat a campaign are in the benchmarks
+          repository. Each dataset links its raw bundles, CSV, campaign lock, manifest and
+          checksums.
+        </p>
+        <p>
+          <a class="more" href={benchmarks.repo}>
+            Benchmark harness
+          </a>
+          <a class="more" href={benchmarks.methodology}>
+            Methodology
+          </a>
+          <a class="more" href={benchmarks.reproduce}>
+            Reproduce a run
+          </a>
+        </p>
+      </article>
+    </div>
+  </section>
+</BaseLayout>
+
+<script>
+  import "../scripts/benchmarks";
+</script>

@@ -3,7 +3,9 @@
 The source of [splotlabs.io](https://splotlabs.io), the website for
 [splot](https://github.com/splotlabs/splot): an encoder, a decoder and a validator for AV2.
 
-The website is one static landing page and a 404 page. It is built with
+The website is one static landing page, a benchmarks page and a 404 page. The benchmarks page
+reads the published benchmark datasets of
+[splotlabs/benchmarks](https://github.com/splotlabs/benchmarks) in the browser. It is built with
 [Astro](https://astro.build) and served by Cloudflare Workers Static Assets. It has no backend,
 no analytics and no client framework.
 
