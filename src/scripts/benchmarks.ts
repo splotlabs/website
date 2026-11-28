@@ -1062,7 +1062,7 @@ function views(s: Summary): { summary: HTMLElement; detail: HTMLElement[] } {
     speedup.append(tableWrap("Speedup table", table));
   }
 
-  const out: HTMLElement[] = [throughput, speedup];
+  const out = [throughput, speedup];
 
   // Thread scaling
   if (m.threads.length > 1) {
@@ -1137,7 +1137,7 @@ function fold(id: string, title: string, hint: string, notes: string[]): HTMLEle
   const d = h(
     "details",
     { class: "view fold", id: `view-${id}`, open: view.open.includes(id) },
-    h("summary", null, h("h3", null, title), h("span", { class: "hint" }, hint)),
+    h("summary", null, h("h3", null, title), h("span", { class: "muted" }, hint)),
     ...notes.map((n) => h("p", { class: "note" }, n)),
   );
   d.addEventListener("toggle", () => {
