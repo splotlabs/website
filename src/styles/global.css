@@ -516,7 +516,8 @@ button[data-copy]:active {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem;
 }
-.card {
+.card,
+.tile {
   padding: clamp(1.25rem, 3vw, 2rem);
   background: rgb(14 14 22 / 0.72);
   border: 1px solid var(--line);
@@ -840,7 +841,8 @@ h3 {
   gap: 1.25rem;
   min-width: 0;
 }
-.summary > * {
+.summary > *,
+.tile > * {
   min-width: 0;
   margin: 0;
 }
@@ -858,15 +860,6 @@ h3 {
   align-content: start;
   gap: 0.35rem;
   min-width: 0;
-  padding: clamp(1.25rem, 3vw, 2rem);
-  background: rgb(14 14 22 / 0.72);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  box-shadow: 0 1px 0 rgb(255 255 255 / 0.06) inset;
-}
-.tile > * {
-  min-width: 0;
-  margin: 0;
 }
 .tile .big {
   font-size: clamp(3.25rem, 9vw, 5.5rem);

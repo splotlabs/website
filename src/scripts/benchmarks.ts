@@ -370,8 +370,7 @@ function openTarget(event: Event) {
 /** Draws the forms and the results. Use update() when the form options stay the same. */
 function render(note = "") {
   if (!app) return;
-  const active = document.activeElement;
-  const focused = active && app.contains(active) ? active.getAttribute("name") : null;
+  const focused = document.activeElement?.getAttribute("name");
   body = current
     ? { summary: h("div", { class: "bench-body" }), detail: h("div", { class: "bench-body" }) }
     : null;
@@ -423,12 +422,7 @@ function choice(name: string, label: string, options: Opt[], value: string) {
       "div",
       null,
       ...options.map(([v, t]) =>
-        h(
-          "label",
-          null,
-          h("input", { type: "radio", name, value: v, checked: v === value }),
-          h("span", null, t),
-        ),
+        h("label", null, h("input", { type: "radio", name, value: v, checked: v === value }), t),
       ),
     ),
   );
@@ -675,16 +669,14 @@ function views(s: Summary): { summary: HTMLElement; detail: HTMLElement[] } {
         x.implementation === impl &&
         x.baseline === baseline,
     );
-  /** The ratios of one decoder against a baseline at the selected thread budget, by stream. */
-  const ratiosOf = (baseline: string) =>
-    new Map(
-      s.speedups
-        .filter(
-          (x) =>
-            x.machine_id === m.machine_id && x.threads === view.threads && x.baseline === baseline,
-        )
-        .map((x) => [`${x.case_id}|${x.implementation}`, x.ratio]),
-    );
+  /** The ratio of each stream and pair of decoders at the selected thread budget. */
+  const ratios = new Map(
+    s.speedups
+      .filter((x) => x.machine_id === m.machine_id && x.threads === view.threads)
+      .map((x) => [`${x.case_id}|${x.implementation}|${x.baseline}`, x.ratio]),
+  );
+  const ratioOf = (caseId: string, impl: string, baseline: string) =>
+    ratios.get(`${caseId}|${impl}|${baseline}`);
   /** Why a stream has no ratio for a pair of decoders. */
   const why = (caseId: string, impl: string, baseline: string) =>
     [impl, baseline]
@@ -692,6 +684,42 @@ function views(s: Summary): { summary: HTMLElement; detail: HTMLElement[] } {
       .filter(([, st]) => st !== "ok")
       .map(([d, st]) => `${label(d)}: ${st ? statusText[st] : "no result"}`)
       .join(", ") || "no ratio in the dataset";
+
+  /** One row for each stream, one column for each decoder: the ratio of a pair, or why not. */
+  const ratioTable = (
+    caption: string,
+    rows: Case[],
+    cols: Implementation[],
+    pair: (col: string) => [impl: string, baseline: string],
+  ) =>
+    h(
+      "table",
+      null,
+      h("caption", null, caption),
+      thead(["Stream", ...cols.map((i) => implLink(i.id))]),
+      h(
+        "tbody",
+        null,
+        ...rows.map((c) =>
+          h(
+            "tr",
+            null,
+            h("th", { scope: "row" }, c.name),
+            ...cols.map((i) => {
+              const [impl, baseline] = pair(i.id);
+              const v = ratioOf(c.id, impl, baseline);
+              return h(
+                "td",
+                { class: "num" },
+                v === undefined
+                  ? h("span", { class: "st" }, `Not comparable: ${why(c.id, impl, baseline)}`)
+                  : ratio(v),
+              );
+            }),
+          ),
+        ),
+      ),
+    );
 
   // Summary: the lead decoder against each other decoder. Every number is an aggregate or a
   // speedup of the dataset; the page only compares them with 1.
@@ -738,9 +766,6 @@ function views(s: Summary): { summary: HTMLElement; detail: HTMLElement[] } {
         `Geometric mean of the throughput ratio over the ${view.depth}-bit streams that both decoders decoded correctly. ${cpuText(m)}, ${threadText(view.threads)}.`,
       ),
     );
-    const leadRatios = new Map(rivals.map((r) => [r.id, ratiosOf(r.id)]));
-    const ratioOf = (rival: string, caseId: string) =>
-      leadRatios.get(rival)!.get(`${caseId}|${lead.id}`);
     const tiles = h("div", { class: "tiles" });
     for (const r of rivals) {
       const a = aggregate(lead.id, r.id, view.threads, view.depth);
@@ -780,7 +805,7 @@ function views(s: Summary): { summary: HTMLElement; detail: HTMLElement[] } {
         }
       }
       const points = depthCases.flatMap((c) => {
-        const v = ratioOf(r.id, c.id);
+        const v = ratioOf(c.id, lead.id, r.id);
         return v === undefined ? [] : [{ name: c.name, value: v }];
       });
       if (points.length) {
@@ -836,41 +861,11 @@ function views(s: Summary): { summary: HTMLElement; detail: HTMLElement[] } {
         ),
       ),
     );
-    const streams = h(
-      "table",
-      null,
-      h("caption", null, `Throughput ratio of ${label(lead.id)} against each decoder. ${scope}.`),
-      h(
-        "thead",
-        null,
-        h(
-          "tr",
-          null,
-          h("th", { scope: "col" }, "Stream"),
-          ...rivals.map((r) => h("th", { scope: "col" }, implLink(r.id))),
-        ),
-      ),
-      h(
-        "tbody",
-        null,
-        ...depthCases.map((c) =>
-          h(
-            "tr",
-            null,
-            h("th", { scope: "row" }, c.name),
-            ...rivals.map((r) => {
-              const v = ratioOf(r.id, c.id);
-              return h(
-                "td",
-                { class: "num" },
-                v === undefined
-                  ? h("span", { class: "st" }, `Not comparable: ${why(c.id, lead.id, r.id)}`)
-                  : ratio(v),
-              );
-            }),
-          ),
-        ),
-      ),
+    const streams = ratioTable(
+      `Throughput ratio of ${label(lead.id)} against each decoder. ${scope}.`,
+      depthCases,
+      rivals,
+      (r) => [lead.id, r],
     );
     summary.append(
       tiles,
@@ -995,7 +990,6 @@ function views(s: Summary): { summary: HTMLElement; detail: HTMLElement[] } {
   if (empty || !others.length) {
     speedup.append(h("p", null, empty || "Select a decoder other than the baseline."));
   } else {
-    const ratios = ratiosOf(view.baseline);
     const caseName = (id: string) => s.cases.find((c) => c.id === id)?.name ?? id;
     speedup.append(
       h("h4", null, `All ${view.depth}-bit streams of the suite`),
@@ -1037,7 +1031,7 @@ function views(s: Summary): { summary: HTMLElement; detail: HTMLElement[] } {
         cases.map((c) => ({
           label: c.name,
           bars: others.map((i) => {
-            const r = ratios.get(`${c.id}|${i.id}`);
+            const r = ratioOf(c.id, i.id, view.baseline);
             return r === undefined
               ? {
                   label: i.name || i.id,
@@ -1059,41 +1053,11 @@ function views(s: Summary): { summary: HTMLElement; detail: HTMLElement[] } {
         1,
       ),
     );
-    const table = h(
-      "table",
-      null,
-      h("caption", null, `Speedup against ${label(view.baseline)}. ${scope}.`),
-      h(
-        "thead",
-        null,
-        h(
-          "tr",
-          null,
-          h("th", { scope: "col" }, "Stream"),
-          ...others.map((i) => h("th", { scope: "col" }, implLink(i.id))),
-        ),
-      ),
-      h(
-        "tbody",
-        null,
-        ...cases.map((c) =>
-          h(
-            "tr",
-            null,
-            h("th", { scope: "row" }, c.name),
-            ...others.map((i) => {
-              const r = ratios.get(`${c.id}|${i.id}`);
-              return h(
-                "td",
-                { class: "num" },
-                r === undefined
-                  ? h("span", { class: "st" }, `Not comparable: ${why(c.id, i.id, view.baseline)}`)
-                  : ratio(r),
-              );
-            }),
-          ),
-        ),
-      ),
+    const table = ratioTable(
+      `Speedup against ${label(view.baseline)}. ${scope}.`,
+      cases,
+      others,
+      (i) => [i, view.baseline],
     );
     speedup.append(tableWrap("Speedup table", table));
   }
@@ -1173,7 +1137,7 @@ function fold(id: string, title: string, hint: string, notes: string[]): HTMLEle
   const d = h(
     "details",
     { class: "view fold", id: `view-${id}`, open: view.open.includes(id) },
-    h("summary", null, h("h3", { id: `view-${id}-h` }, title), h("span", { class: "hint" }, hint)),
+    h("summary", null, h("h3", null, title), h("span", { class: "hint" }, hint)),
     ...notes.map((n) => h("p", { class: "note" }, n)),
   );
   d.addEventListener("toggle", () => {
@@ -1195,7 +1159,7 @@ function section(id: string, title: string, notes: string[]): HTMLElement {
   );
 }
 
-const thead = (cols: string[]) =>
+const thead = (cols: Kid[]) =>
   h("thead", null, h("tr", null, ...cols.map((c) => h("th", { scope: "col" }, c))));
 
 function statusCell(x: Cell): HTMLElement {
@@ -1303,7 +1267,7 @@ function spreadChart(
       }),
     );
     // The line of ratio 1, and the two ends of the range when they have room for a label.
-    for (const v of [1, hi, lo]) {
+    for (const v of new Set([1, hi, lo])) {
       if (v === 1 || Math.abs(y(v) - y(1)) >= 14) {
         root.append(
           svg("text", { x: labelW - 8, y: y(v) + 4, class: "lbl", "text-anchor": "end" }, ratio(v)),
