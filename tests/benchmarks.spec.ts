@@ -359,18 +359,30 @@ test("the headline says faster only when each printed ratio is above 1", async (
   await withData(page);
   const [lead, ...rivals] = s1.implementations as Json[];
   const names = new Intl.ListFormat("en").format(rivals.map((r) => r.name));
-  const setRatios = (values: (number | null)[]) =>
+  // Each pair covers every stream, unless `short` takes one stream from the first pair.
+  const setRatios = (values: (number | null)[], short = false) =>
     serveSummary(page, (s) => {
-      for (const a of s.aggregates) {
-        const n = rivals.findIndex((r) => r.id === a.baseline);
-        if (a.implementation === lead.id && n >= 0) a.geomean_ratio = values[n % values.length];
+      const mine = s.aggregates.filter(
+        (a: Json) => a.implementation === lead.id && rivals.some((r) => r.id === a.baseline),
+      );
+      for (const a of mine) {
+        a.geomean_ratio = values[rivals.findIndex((r) => r.id === a.baseline) % values.length];
+        a.n_matched = a.n_expected;
+        a.excluded = [];
       }
+      if (short)
+        for (const a of mine.filter((x: Json) => x.baseline === rivals[0].id)) a.n_matched -= 1;
     });
   const headline = page.locator("#view-summary h3");
 
   await setRatios([1.5, 1.006]);
   await page.goto(closed);
   await expect(headline).toHaveText(`${lead.name} is faster than ${names}.`);
+
+  // A stream without a ratio: the mean does not cover the suite, so the headline makes no claim.
+  await setRatios([1.5, 1.006], true);
+  await page.goto(closed);
+  await expect(headline).toHaveText(`${lead.name} against ${names}.`);
 
   // 1.004 prints as 1.00×: that is not faster. Neither is a missing geometric mean.
   for (const values of [

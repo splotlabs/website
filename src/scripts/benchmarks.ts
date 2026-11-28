@@ -239,9 +239,12 @@ function sanitize(s: Summary, p: URLSearchParams): View {
     q: (p.get("q") ?? "").slice(0, 100),
     res: pick(p.get("res"), resolutions, ""),
     scale: pick(p.get("scale"), impls, decoders[0] ?? impls[0]),
-    open: folds.filter((f) => (p.get("open") ?? "").split(",").includes(f)),
+    open: openOf(p),
   };
 }
+
+const openOf = (p: URLSearchParams) =>
+  folds.filter((f) => (p.get("open") ?? "").split(",").includes(f));
 
 function resolutionsOf(s: Summary, depth: number): string[] {
   const set = s.cases.filter((c) => c.bit_depth === depth).map((c) => `${c.width}x${c.height}`);
@@ -317,7 +320,7 @@ async function start() {
 async function selectDataset(id: string, params: URLSearchParams, note = "") {
   entry = index.datasets.find((d) => d.dataset_id === id)!;
   current = null;
-  view = { ...view, dataset: id };
+  view = { ...view, dataset: id, open: openOf(params) };
   render(note);
   state("loading", "Loading the dataset…");
   let s: Summary;
@@ -548,8 +551,7 @@ function onInput(e: Event) {
   for (const f of app.querySelectorAll("form")) {
     for (const [k, v] of new FormData(f)) data.append(k, v);
   }
-  const p = new URLSearchParams();
-  if (current) p.set("open", view.open.join(","));
+  const p = new URLSearchParams({ open: view.open.join(",") });
   for (const k of ["machine", "depth", "threads", "baseline", "res", "q", "scale"]) {
     const v = data.get(k);
     if (typeof v === "string") p.set(k, v);
@@ -697,11 +699,19 @@ function views(s: Summary): { summary: HTMLElement; detail: HTMLElement[] } {
   const rivals = s.implementations.filter((i) => i.id !== lead.id);
   const short = (i: Implementation) => i.name || i.id;
   const depthCases = s.cases.filter((c) => c.bit_depth === view.depth);
-  const means = rivals.map(
-    (r) => aggregate(lead.id, r.id, view.threads, view.depth)?.geomean_ratio ?? null,
-  );
-  // The headline says "faster" only when each ratio, as the page prints it, is above 1.
-  const ahead = rivals.length > 0 && means.every((v) => v !== null && Number(v.toFixed(2)) > 1);
+  // The headline says "faster" only when, for each pair, every stream of the bit depth matched
+  // and the geometric mean, as the page prints it, is above 1.
+  const ahead =
+    rivals.length > 0 &&
+    rivals.every((r) => {
+      const a = aggregate(lead.id, r.id, view.threads, view.depth);
+      return (
+        a !== undefined &&
+        a.geomean_ratio !== null &&
+        a.n_matched === a.n_expected &&
+        Number(a.geomean_ratio.toFixed(2)) > 1
+      );
+    });
   const rivalNames = names.format(rivals.map(short));
   const summary = h(
     "section",

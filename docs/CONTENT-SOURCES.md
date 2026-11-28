@@ -43,7 +43,8 @@ without change, and it computes no statistics. Its summary compares one decoder 
 in `src/data/site.ts`, else the first decoder of the dataset) with each other decoder. Each ratio
 there is a geometric mean or a per-stream speedup that the harness wrote into the dataset. The
 headline says that the lead decoder "is faster than" the others only when each of those geometric
-means, as the page prints it, is above 1 for the selected machine, bit depth and thread budget.
+means, as the page prints it, is above 1 and covers every stream of the bit depth, for the
+selected machine, bit depth and thread budget.
 In every other case the headline names the decoders and makes no claim. The owner approved this
 wording on 2026-11-28. While the
 published index lists no dataset, the page shows "Results are not published yet." The test fixtures

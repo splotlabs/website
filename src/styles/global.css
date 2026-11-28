@@ -805,7 +805,7 @@ h3 {
   align-items: center;
   justify-content: center;
   min-width: 3.25rem;
-  min-height: 42px;
+  min-height: 44px;
   padding: 0 0.9rem;
   border-radius: 11px;
   font-variant-numeric: tabular-nums;
@@ -952,14 +952,14 @@ h3 {
   display: none;
 }
 .fold > summary::after {
-  content: "+";
+  content: "+" / "";
   margin-left: auto;
   color: var(--muted);
   font-size: 1.5rem;
   line-height: 1;
 }
 .fold[open] > summary::after {
-  content: "−";
+  content: "−" / "";
 }
 .fold > summary:hover::after {
   color: var(--text);
