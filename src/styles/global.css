@@ -516,7 +516,8 @@ button[data-copy]:active {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem;
 }
-.card {
+.card,
+.tile {
   padding: clamp(1.25rem, 3vw, 2rem);
   background: rgb(14 14 22 / 0.72);
   border: 1px solid var(--line);
@@ -789,6 +790,100 @@ h3 {
   margin: 0;
   accent-color: var(--cyan);
 }
+/* A choice of a few values: one row of buttons. The radio input covers its label. */
+.seg > div {
+  display: flex;
+  flex-wrap: wrap;
+  width: fit-content;
+  max-width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #0c0c14;
+}
+.seg label {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 3.25rem;
+  min-height: 44px;
+  padding: 0 0.9rem;
+  border-radius: 11px;
+  font-variant-numeric: tabular-nums;
+  transition:
+    background-color 0.15s var(--ease),
+    color 0.15s var(--ease);
+}
+.seg input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.seg label:hover {
+  color: var(--text);
+}
+.seg label:has(input:checked) {
+  background: var(--text);
+  color: var(--bg);
+}
+.seg label:has(input:focus-visible) {
+  outline: 2px solid var(--cyan);
+  outline-offset: 3px;
+}
+
+/* The summary: one tile for each decoder that the lead decoder is compared with. */
+.summary {
+  display: grid;
+  gap: 1.25rem;
+  min-width: 0;
+}
+.summary > *,
+.tile > * {
+  min-width: 0;
+  margin: 0;
+}
+.summary h3 {
+  font-size: clamp(1.6rem, 3.6vw, 2.5rem);
+  text-wrap: balance;
+}
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+  gap: 1rem;
+}
+.tile {
+  display: grid;
+  align-content: start;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.tile .big {
+  font-size: clamp(3.25rem, 9vw, 5.5rem);
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.tile .claim {
+  font-size: 1.25rem;
+  font-weight: 500;
+}
+.tile .chart {
+  margin-top: 1rem;
+}
+.small {
+  font-size: 0.875rem;
+}
+.table-wrap td.now {
+  background: var(--surface-hover);
+  color: var(--text);
+  font-weight: 600;
+}
+
 .kv {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
@@ -828,6 +923,38 @@ h3 {
 .view h4 {
   font-size: 1rem;
   font-weight: 600;
+}
+/* A view that starts closed. The heading is the control that opens it. */
+.fold {
+  display: block;
+}
+.fold > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 1rem;
+  min-height: 44px;
+  cursor: pointer;
+  list-style: none;
+}
+.fold > summary::-webkit-details-marker {
+  display: none;
+}
+.fold > summary::after {
+  content: "+" / "";
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 1.5rem;
+  line-height: 1;
+}
+.fold[open] > summary::after {
+  content: "−" / "";
+}
+.fold > summary:hover::after {
+  color: var(--text);
+}
+.fold > :not(summary) {
+  margin-top: 1rem;
 }
 .note,
 .muted {
@@ -960,7 +1087,8 @@ h3 {
 .kv a,
 .files a,
 .aggregates a,
-.bench-status a {
+.bench-status a,
+.tile a {
   color: var(--text);
   text-underline-offset: 0.2em;
 }

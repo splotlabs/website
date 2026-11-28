@@ -63,4 +63,7 @@ export const benchmarks = {
   repo: "https://github.com/splotlabs/benchmarks",
   methodology: "https://github.com/splotlabs/benchmarks/blob/main/docs/METHODOLOGY.md",
   reproduce: "https://github.com/splotlabs/benchmarks/blob/main/docs/REPRODUCE.md",
+  // The decoder id that the summary compares with each other decoder. A dataset without this
+  // decoder uses its first decoder.
+  lead: "splot",
 };

@@ -57,10 +57,19 @@ System font stack from the SVG. Monospace stack for commands.
 - **Command panel:** a header with "Copy all", then one row for each command.
 - **Command:** one command with a Copy button, for use in cards.
 - **Card:** the same surface as the panel. A colored eyebrow, an `h3`, text, then commands.
-- **Benchmark views** (benchmarks page only): a filter panel with the panel surface, horizontal
-  SVG bar charts and numeric tables. Each chart has a table with the same data; the table is
-  the accessible source. Cyan, violet and pink label the decoders. Pink text marks a failed
-  status. A wide table scrolls inside its own focusable region, never the page.
+- **Benchmark summary** (benchmarks page only): the first thing below the scope panel. A
+  headline, then one tile for each decoder that the lead decoder is compared with: the pair,
+  one large ratio (52–88 px, weight 600), the matched streams, the ratio of the other bit depths,
+  and a sorted bar for each stream around the line of ratio 1. A table below the tiles has the same ratio for each bit depth and
+  thread budget. The summary shows the aggregates of the dataset; it adds no number.
+- **Segmented choice:** a radio group shown as one row of buttons, for a choice of a few values
+  (bit depth, thread budget). The selected value has the primary button colors.
+- **Benchmark views** (benchmarks page only): the views of each stream start closed. The heading
+  of a view opens it, and the link of the page keeps the open views. A view has a filter panel
+  with the panel surface, horizontal SVG bar charts and numeric tables. Each chart has a table
+  with the same data; the table is the accessible source. Cyan, violet and pink label the
+  decoders. Pink text marks a failed status. A wide table scrolls inside its own focusable
+  region, never the page.
 
 ## Motion
 
