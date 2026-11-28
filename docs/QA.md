@@ -135,7 +135,7 @@ aggregates of the dataset; the views of each stream start closed.
 | Bit depth and thread budget work with the keyboard; the focus stays in the group      | Playwright, fixtures | Passed       |
 | No horizontal overflow at 320, 390, 768 and 1440 px, empty and loaded                 | Playwright           | Passed       |
 | Automated accessibility (same rules as above), empty and loaded, 390 and 1440 px      | axe-core             | 0 violations |
-| Benchmarks page JavaScript                                                            | gzip size            | 14.6 kB      |
+| Benchmarks page JavaScript                                                            | gzip size            | 14.5 kB      |
 
 With the published dataset `ds-2789f40c250f9cd0` from the real raw file host, at 1280 px: the page
 is 5,147 px high with the views closed (44,151 px before this change), and the summary numbers
