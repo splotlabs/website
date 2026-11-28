@@ -882,10 +882,6 @@ h3 {
 .tile .chart {
   margin-top: 1rem;
 }
-.tile a {
-  color: var(--text);
-  text-underline-offset: 0.2em;
-}
 .small {
   font-size: 0.875rem;
 }
@@ -1099,7 +1095,8 @@ h3 {
 .kv a,
 .files a,
 .aggregates a,
-.bench-status a {
+.bench-status a,
+.tile a {
   color: var(--text);
   text-underline-offset: 0.2em;
 }

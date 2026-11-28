@@ -59,8 +59,8 @@ System font stack from the SVG. Monospace stack for commands.
 - **Card:** the same surface as the panel. A colored eyebrow, an `h3`, text, then commands.
 - **Benchmark summary** (benchmarks page only): the first thing below the scope panel. A
   headline, then one tile for each decoder that the lead decoder is compared with: the pair,
-  one large ratio (52–88 px, weight 600), the matched streams, and a sorted bar for each stream
-  around the line of ratio 1. A table below the tiles has the same ratio for each bit depth and
+  one large ratio (52–88 px, weight 600), the matched streams, the ratio of the other bit depths,
+  and a sorted bar for each stream around the line of ratio 1. A table below the tiles has the same ratio for each bit depth and
   thread budget. The summary shows the aggregates of the dataset; it adds no number.
 - **Segmented choice:** a radio group shown as one row of buttons, for a choice of a few values
   (bit depth, thread budget). The selected value has the primary button colors.

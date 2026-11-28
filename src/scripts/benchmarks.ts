@@ -108,7 +108,7 @@ const opt = (v: number | null, fmt: (v: number) => string): Kid =>
   v === null ? notMeasured() : fmt(v);
 const fps = (v: number) => f1.format(v);
 const ratio = (v: number) => `${f2.format(v)}×`;
-const names = new Intl.ListFormat("en", { style: "long", type: "conjunction" });
+const names = new Intl.ListFormat("en");
 const statusText: Record<Status, string> = {
   ok: "OK",
   incorrect: "Incorrect output",
@@ -451,7 +451,7 @@ function scopeForm(s: Summary | null): HTMLFormElement {
   ]);
   const f = h(
     "form",
-    { class: "filters scope", "aria-label": "Dataset, machine and scope" },
+    { class: "filters", "aria-label": "Dataset, machine and scope" },
     field("dataset", "Dataset", datasets, view.dataset),
   );
   if (s) {
@@ -1236,9 +1236,6 @@ function bar(
   return { label, value: v, text: fmt(v), title: `${label}: ${fmt(v)}` };
 }
 
-/** A chart inside closed details is not drawn. It is drawn when the reader opens the details. */
-const closed = (box: HTMLElement) => box.closest("details:not([open])") !== null;
-
 /**
  * Decoders keep one style each: three colors, then the same colors dashed. Neighbours always
  * differ in color; from the seventh decoder on the styles repeat, and the name beside each bar
@@ -1265,7 +1262,7 @@ function spreadChart(
       charts.delete(draw);
       return;
     }
-    const w = closed(box) ? 0 : Math.floor(box.clientWidth);
+    const w = Math.floor(box.clientWidth);
     if (!w) return;
     const labelW = 52;
     const top = 10;
@@ -1327,7 +1324,8 @@ function chartBox(groups: Group[], keys: string[] = [], ref?: number): HTMLEleme
       charts.delete(draw);
       return;
     }
-    const w = closed(box) ? 0 : Math.floor(box.clientWidth);
+    // A chart inside closed details is not drawn. It is drawn when the reader opens the details.
+    const w = box.closest("details:not([open])") ? 0 : Math.floor(box.clientWidth);
     if (!w) return;
     const char = 7.2; // Approximate width of a 12 px character.
     const fit = (t: string, px: number) => {
