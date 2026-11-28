@@ -25,7 +25,9 @@ const summary = (id: string) => read(`main/datasets/${id}/summary.json`);
 const [DS1, DS2, DS3, DS4] = indexJson().datasets.map((d: Json) => d.dataset_id) as string[];
 const ARM = "fixture-arm-01";
 const X86 = "fixture-x86-01";
-const full = `/benchmarks/?dataset=${DS1}`;
+// The views of each stream start closed. Most tests read them, so their link opens them.
+const closed = `/benchmarks/?dataset=${DS1}`;
+const full = `${closed}&open=throughput,speedup,scaling`;
 const s1 = summary(DS1);
 const impl = (id: string, s = s1) => s.implementations.find((i: Json) => i.id === id);
 const short = (id: string, s = s1) => impl(id, s).commit.slice(0, 12);
@@ -204,7 +206,7 @@ test("without any complete dataset, the newest dataset is the default", async ({
 test("a partial dataset names the missing role and the status counts", async ({ page }) => {
   const problems = watchProblems(page);
   await withData(page);
-  await page.goto(`/benchmarks/?dataset=${DS4}`);
+  await page.goto(`/benchmarks/?dataset=${DS4}&open=throughput`);
   const banner = page.locator('[data-banner="partial"]');
   const cov = summary(DS4).coverage;
   const missing = cov.roles_expected.filter((r: string) => !cov.roles_present.includes(r));
@@ -249,8 +251,8 @@ test("loaded view: filters and URL state", async ({ page }) => {
     ),
   );
   await page.locator("#f-machine").selectOption(X86);
-  await page.locator("#f-depth").selectOption("10");
-  await page.locator("#f-threads").selectOption("4");
+  await page.locator("#f-depth").getByLabel("10-bit").check();
+  await page.locator("#f-threads").getByLabel("4", { exact: true }).check();
   await page.locator("#f-q").fill("720");
   await expect(page.locator("#f-q")).toBeFocused();
   const groups = page.locator("#view-throughput tbody th");
@@ -263,8 +265,8 @@ test("loaded view: filters and URL state", async ({ page }) => {
   // The same link reproduces the view.
   await page.goto(page.url());
   await expect(page.locator("#f-machine")).toHaveValue(X86);
-  await expect(page.locator("#f-depth")).toHaveValue("10");
-  await expect(page.locator("#f-threads")).toHaveValue("4");
+  await expect(page.locator("#f-depth input:checked")).toHaveValue("10");
+  await expect(page.locator("#f-threads input:checked")).toHaveValue("4");
   await expect(page.locator("#f-q")).toHaveValue("720");
   await expect(groups).toHaveCount(1);
 
@@ -272,6 +274,132 @@ test("loaded view: filters and URL state", async ({ page }) => {
   await expect(page).toHaveURL(/decoders=fixture-a%2Cfixture-b/);
   await expect(page.locator("#view-throughput tbody tr")).toHaveCount(2);
   expect(problems).toEqual([]);
+});
+
+test("the summary comes first, from the aggregates of the dataset; the views start closed", async ({
+  page,
+}) => {
+  const problems = watchProblems(page);
+  await withData(page);
+  await page.goto(`${closed}&machine=${ARM}&threads=1&depth=10`);
+  // The fixtures have no decoder with the id of the lead decoder, so the first decoder leads.
+  const [lead, ...rivals] = s1.implementations as Json[];
+  expect(lead.id).not.toBe(benchmarks.lead);
+  const agg = (rival: string, threads: number, depth: number) =>
+    s1.aggregates.find(
+      (a: Json) =>
+        a.machine_id === ARM &&
+        a.threads === threads &&
+        a.bit_depth === depth &&
+        a.implementation === lead.id &&
+        a.baseline === rival,
+    );
+  const sum = page.locator("#view-summary");
+  const tiles = sum.locator(".tile");
+  await expect(tiles).toHaveCount(rivals.length);
+  for (const [n, rival] of rivals.entries()) {
+    const a = agg(rival.id, 1, 10);
+    const tile = tiles.nth(n);
+    await expect(tile.locator(".eyebrow")).toHaveText(`${lead.name} vs ${rival.name}`);
+    await expect(tile.locator(".big")).toHaveText(two(a.geomean_ratio));
+    await expect(tile.locator(".claim")).toHaveText(`the speed of ${rival.name}`);
+    await expect(tile).toContainText(`${a.n_matched} of ${a.n_expected} 10-bit streams matched.`);
+    await expect(tile).toContainText(`8-bit streams: ${two(agg(rival.id, 1, 8).geomean_ratio)}.`);
+    // One bar for each stream that has a ratio in the dataset.
+    const ratios = s1.speedups.filter(
+      (r: Json) =>
+        r.machine_id === ARM &&
+        r.threads === 1 &&
+        r.implementation === lead.id &&
+        r.baseline === rival.id &&
+        r.case_id.endsWith("10bit"),
+    );
+    expect(ratios.length).toBe(a.n_matched);
+    await expect(tile.locator(".spread rect.fill")).toHaveCount(ratios.length);
+  }
+
+  // Every thread budget and bit depth of the machine, with the selected one marked.
+  const matrix = page.getByRole("region", { name: "Summary table" });
+  const threads = s1.machines.find((m: Json) => m.machine_id === ARM).threads as number[];
+  await expect(matrix.locator("tbody tr")).toHaveCount(rivals.length * 2);
+  await expect(matrix.locator("tbody td")).toHaveCount(rivals.length * 2 * threads.length);
+  await expect(matrix.locator("td.now")).toHaveText(
+    rivals.map((r) => {
+      const a = agg(r.id, 1, 10);
+      return `${two(a.geomean_ratio)}${a.n_matched} of ${a.n_expected} streams`;
+    }),
+  );
+
+  // A stream without a ratio names the reason. The tile links to that table.
+  const excluded = rivals.find((r) => agg(r.id, 1, 10).excluded.length)!;
+  const gone = agg(excluded.id, 1, 10).excluded[0];
+  await tiles.nth(rivals.indexOf(excluded)).getByRole("link").click();
+  await expect(page.locator("#summary-streams")).toHaveAttribute("open", "");
+  await expect(
+    page.locator("#summary-streams tbody tr", { hasText: caseName(gone.case_id) }),
+  ).toContainText(`Not comparable: ${label(gone.implementation)}: ${statusLabels[gone.status]}`);
+
+  // The views of each stream are closed. Opening one draws it and goes into the link.
+  const view = page.locator("#view-throughput");
+  await expect(view).not.toHaveAttribute("open", "");
+  await expect(view.locator(".chart svg")).toHaveCount(0);
+  await view.locator("summary").click();
+  await expect(view.locator(".chart svg")).toBeVisible();
+  const opened = () => new URL(page.url()).searchParams.get("open");
+  await expect.poll(opened).toBe("throughput");
+  await page.goto(page.url());
+  await expect(page.locator("#view-throughput")).toHaveAttribute("open", "");
+  await expect(page.locator("#view-speedup")).not.toHaveAttribute("open", "");
+  await page.locator("#view-throughput summary").click();
+  await expect.poll(opened).toBe("");
+  expect(problems).toEqual([]);
+});
+
+test("the headline says faster only when each printed ratio is above 1", async ({ page }) => {
+  await withData(page);
+  const [lead, ...rivals] = s1.implementations as Json[];
+  const names = new Intl.ListFormat("en").format(rivals.map((r) => r.name));
+  const setRatios = (values: (number | null)[]) =>
+    serveSummary(page, (s) => {
+      for (const a of s.aggregates) {
+        const n = rivals.findIndex((r) => r.id === a.baseline);
+        if (a.implementation === lead.id && n >= 0) a.geomean_ratio = values[n % values.length];
+      }
+    });
+  const headline = page.locator("#view-summary h3");
+
+  await setRatios([1.5, 1.006]);
+  await page.goto(closed);
+  await expect(headline).toHaveText(`${lead.name} is faster than ${names}.`);
+
+  // 1.004 prints as 1.00×: that is not faster. Neither is a missing geometric mean.
+  for (const values of [
+    [1.5, 1.004],
+    [1.5, 0.9],
+    [1.5, null],
+  ]) {
+    await setRatios(values);
+    await page.goto(closed);
+    await expect(headline).toHaveText(`${lead.name} against ${names}.`);
+  }
+  await expect(page.locator("#view-summary .tile .st")).toHaveText(
+    "No stream matched, so there is no geometric mean.",
+  );
+});
+
+test("the decoder with the lead id leads the summary", async ({ page }) => {
+  await withData(page);
+  // Rename the second decoder of the fixture to the id that the page leads with.
+  const renamed = JSON.parse(
+    JSON.stringify(summary(DS1)).replaceAll('"fixture-b"', JSON.stringify(benchmarks.lead)),
+  );
+  await serve(page, `datasets/${DS1}/summary.json`, JSON.stringify(renamed));
+  await page.goto(closed);
+  const names = (s1.implementations as Json[]).map((i) => i.name);
+  await expect(page.locator("#view-summary .tile .eyebrow")).toHaveText([
+    `${names[1]} vs ${names[0]}`,
+    `${names[1]} vs ${names[2]}`,
+  ]);
 });
 
 test("baseline change uses the speedups and aggregates of the dataset", async ({ page }) => {
@@ -345,7 +473,7 @@ test("a failed cell is a labelled status, not a zero bar", async ({ page }) => {
   await expect(view.locator(".chart rect.fill")).toHaveCount(ok.length);
   await expect(view.locator("thead th", { hasText: "First-frame latency" })).toHaveCount(0);
 
-  await page.locator("#f-threads").selectOption("4");
+  await page.locator("#f-threads").getByLabel("4", { exact: true }).check();
   await expect(view.locator("tbody td", { hasText: "Incorrect output" })).toHaveCount(1);
   // CPU time is null on the x86 machine.
   await page.locator("#f-machine").selectOption(X86);
@@ -550,7 +678,8 @@ test("every generated dataset loads without console errors or CSP violations", a
   });
   await withData(page);
   for (const id of [DS1, DS2, DS3, DS4]) {
-    await page.goto(`/benchmarks/?dataset=${id}`);
+    await page.goto(`/benchmarks/?dataset=${id}&open=throughput`);
+    await expect(page.locator("#view-summary .tile").first()).toBeVisible();
     await expect(page.locator("#view-throughput .chart svg")).toBeVisible();
     await page.locator("#bench-history summary").click();
     await expect(page.locator("#bench-history tbody tr").first()).toBeVisible();
@@ -764,6 +893,13 @@ test("the filters work with the keyboard", async ({ page }) => {
   const region = page.getByRole("region", { name: "Throughput table" });
   await region.focus();
   await expect(region).toBeFocused();
+  // Bit depth is a radio group: an arrow key changes it and the focus stays in the group.
+  const depth = page.locator("#f-depth input:checked");
+  await depth.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(depth).toHaveValue("10");
+  await expect(depth).toBeFocused();
+  await expect(page).toHaveURL(/depth=10/);
 });
 
 for (const loaded of [false, true]) {
@@ -926,8 +1062,8 @@ test("other enum values of the schema are shown", async ({ page }) => {
   });
   await page.goto(`${full}&machine=${ARM}`);
   await expect(page.locator('[data-banner="partial"]')).toContainText(`${ARM}: run in-progress.`);
-  await expect(page.locator("#f-depth option")).toHaveText(["8-bit", "10-bit", "12-bit"]);
-  await page.locator("#f-depth").selectOption("12");
+  await expect(page.locator("#f-depth label")).toHaveText(["8-bit", "10-bit", "12-bit"]);
+  await page.locator("#f-depth").getByLabel("12-bit").check();
   await expect(page.locator("#view-throughput tbody th").first()).toContainText("4:0:0");
   expect(problems).toEqual([]);
 });

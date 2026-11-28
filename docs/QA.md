@@ -122,6 +122,27 @@ violation.
 Not run: real published datasets (the published index has none yet), Firefox, Safari, real
 phones and a screen reader session.
 
+## Benchmarks page: summary first (2026-11-28)
+
+Subject: the same build and test setup as above. The page now starts with a summary of the
+aggregates of the dataset; the views of each stream start closed.
+
+| Check                                                                                 | Method               | Result       |
+| ------------------------------------------------------------------------------------- | -------------------- | ------------ |
+| Summary tiles, table and sorted bars equal the aggregates and speedups of the dataset | Playwright, fixtures | Passed       |
+| The headline says "is faster than" only when each printed geometric mean is above 1   | Playwright, fixtures | Passed       |
+| Views start closed and undrawn; an opened view is drawn and is kept in the link       | Playwright, fixtures | Passed       |
+| Bit depth and thread budget work with the keyboard; the focus stays in the group      | Playwright, fixtures | Passed       |
+| No horizontal overflow at 320, 390, 768 and 1440 px, empty and loaded                 | Playwright           | Passed       |
+| Automated accessibility (same rules as above), empty and loaded, 390 and 1440 px      | axe-core             | 0 violations |
+| Benchmarks page JavaScript                                                            | gzip size            | 14.6 kB      |
+
+With the published dataset `ds-2789f40c250f9cd0` from the real raw file host, at 1280 px: the page
+is 5,147 px high with the views closed (44,151 px before this change), and the summary numbers
+equal the `aggregates` of its `summary.json`. No console error and no CSP violation.
+
+Not run: Firefox, Safari, real phones and a screen reader session.
+
 ## Brand fidelity
 
 Compared with `docs/assets/hero.svg` at the recorded upstream commit:

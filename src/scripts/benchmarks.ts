@@ -1,4 +1,5 @@
-// The benchmarks page: loads the published data, applies the filters and draws the views.
+// The benchmarks page: loads the published data and draws a summary, then the views that the
+// reader opens.
 // Every string from the data is set as text. Links from the data must be https.
 import { benchmarks } from "../data/site";
 import {
@@ -14,6 +15,7 @@ import {
   type Build,
   type Case,
   type Cell,
+  type Implementation,
   type IndexEntry,
   type Machine,
   type Status,
@@ -30,7 +32,11 @@ interface View {
   q: string;
   res: string;
   scale: string;
+  /** The views that are open. */
+  open: string[];
 }
+/** The views that start closed. The link of the page keeps the open ones. */
+const folds = ["throughput", "speedup", "scaling"];
 
 const statusEl = document.getElementById("bench-status");
 const app = document.getElementById("bench-app");
@@ -43,7 +49,7 @@ let entry: IndexEntry;
 /** Chart draw functions. A draw function removes itself when its chart left the page. */
 const charts = new Set<() => void>();
 const redraw = () => charts.forEach((draw) => draw());
-let body: HTMLElement | null = null;
+let body: { summary: HTMLElement; detail: HTMLElement } | null = null;
 type Opt = [string, string];
 
 // ---------- Small DOM helpers. They never parse HTML. ----------
@@ -102,6 +108,7 @@ const opt = (v: number | null, fmt: (v: number) => string): Kid =>
   v === null ? notMeasured() : fmt(v);
 const fps = (v: number) => f1.format(v);
 const ratio = (v: number) => `${f2.format(v)}×`;
+const names = new Intl.ListFormat("en", { style: "long", type: "conjunction" });
 const statusText: Record<Status, string> = {
   ok: "OK",
   incorrect: "Incorrect output",
@@ -232,6 +239,7 @@ function sanitize(s: Summary, p: URLSearchParams): View {
     q: (p.get("q") ?? "").slice(0, 100),
     res: pick(p.get("res"), resolutions, ""),
     scale: pick(p.get("scale"), impls, decoders[0] ?? impls[0]),
+    open: folds.filter((f) => (p.get("open") ?? "").split(",").includes(f)),
   };
 }
 
@@ -251,6 +259,7 @@ function toParams(v: View): URLSearchParams {
     q: v.q,
     res: v.res,
     scale: v.scale,
+    open: v.open.join(","),
   });
 }
 
@@ -340,7 +349,8 @@ function guarded(step: () => void) {
     step();
   } catch (e) {
     current = null;
-    body?.replaceChildren();
+    body?.summary.replaceChildren();
+    body?.detail.replaceChildren();
     fail(e);
   }
 }
@@ -354,27 +364,39 @@ function openTarget(event: Event) {
 
 // ---------- Rendering ----------
 
-/** Draws the form and the results. Use update() when the form options stay the same. */
+/** Draws the forms and the results. Use update() when the form options stay the same. */
 function render(note = "") {
   if (!app) return;
-  const focused = (document.activeElement as HTMLSelectElement | null)?.name;
-  body = current ? h("div", { class: "bench-body" }) : null;
+  const active = document.activeElement;
+  const focused = active && app.contains(active) ? active.getAttribute("name") : null;
+  body = current
+    ? { summary: h("div", { class: "bench-body" }), detail: h("div", { class: "bench-body" }) }
+    : null;
   app.replaceChildren(
     note ? h("p", { class: "banner", "data-banner": "note" }, note) : "",
     ...(current ? banners(current) : []),
-    form(current),
-    body ?? "",
+    scopeForm(current),
+    body?.summary ?? "",
+    current ? explore(current) : "",
+    body?.detail ?? "",
   );
-  if (focused) app.querySelector<HTMLElement>(`select[name="${focused}"]`)?.focus();
+  if (focused) {
+    const again = `[name="${CSS.escape(focused)}"]`;
+    (
+      app.querySelector<HTMLElement>(`${again}:checked`) ?? app.querySelector<HTMLElement>(again)
+    )?.focus();
+  }
   update();
 }
 
 /** Draws the results for the current view. Open details stay open. */
 function update() {
-  if (!body || !current) return;
-  const open = [...body.querySelectorAll("details[open]")].map((d) => d.id);
+  if (!app || !body || !current) return;
+  const open = [...app.querySelectorAll("details[open]")].map((d) => d.id);
   charts.clear();
-  body.replaceChildren(meta(current), ...views(current));
+  const v = views(current);
+  body.summary.replaceChildren(v.summary);
+  body.detail.replaceChildren(...v.detail);
   for (const id of open) document.getElementById(id)?.setAttribute("open", "");
   redraw();
 }
@@ -388,7 +410,29 @@ function field(name: string, label: string, options: Opt[], value: string) {
   return h("div", { class: "field" }, h("label", { for: `f-${name}` }, label), sel);
 }
 
-function form(s: Summary | null): HTMLFormElement {
+/** One choice of a few values, shown as a row of buttons. */
+function choice(name: string, label: string, options: Opt[], value: string) {
+  return h(
+    "fieldset",
+    { class: "field seg", id: `f-${name}` },
+    h("legend", null, label),
+    h(
+      "div",
+      null,
+      ...options.map(([v, t]) =>
+        h(
+          "label",
+          null,
+          h("input", { type: "radio", name, value: v, checked: v === value }),
+          h("span", null, t),
+        ),
+      ),
+    ),
+  );
+}
+
+/** The dataset, the machine, the bit depth and the thread budget: they apply to the whole page. */
+function scopeForm(s: Summary | null): HTMLFormElement {
   const datasets = index.datasets.map((d): Opt => [
     d.dataset_id,
     [
@@ -404,13 +448,11 @@ function form(s: Summary | null): HTMLFormElement {
   ]);
   const f = h(
     "form",
-    { class: "filters", "aria-label": "Benchmark filters" },
+    { class: "filters scope", "aria-label": "Dataset, machine and scope" },
     field("dataset", "Dataset", datasets, view.dataset),
   );
   if (s) {
     const m = machineOf(s);
-    const impls = s.implementations.map((i): Opt => [i.id, implLabel(i)]);
-    const depths = depthsOf(s);
     f.append(
       field(
         "machine",
@@ -418,71 +460,96 @@ function form(s: Summary | null): HTMLFormElement {
         s.machines.map((x): Opt => [x.machine_id, machineLabel(x)]),
         view.machine,
       ),
-      field(
+      choice(
         "depth",
         "Bit depth",
-        depths.map((d): Opt => [String(d), `${d}-bit`]),
+        depthsOf(s).map((d): Opt => [String(d), `${d}-bit`]),
         String(view.depth),
       ),
-      field(
+      choice(
         "threads",
         "Requested threads",
-        m.threads.map((t): Opt => [String(t), threadText(t)]),
+        m.threads.map((t): Opt => [String(t), String(t)]),
         String(view.threads),
-      ),
-      field("baseline", "Baseline decoder", impls, view.baseline),
-      field(
-        "res",
-        "Resolution",
-        [
-          ["", "All resolutions"],
-          ...resolutionsOf(s, view.depth).map((r): Opt => [r, r.replace("x", "×")]),
-        ],
-        view.res,
-      ),
-      h(
-        "div",
-        { class: "field" },
-        h("label", { for: "f-q" }, "Stream name"),
-        h("input", { id: "f-q", name: "q", type: "search", value: view.q, autocomplete: "off" }),
-      ),
-      m.threads.length > 1 ? field("scale", "Decoder for thread scaling", impls, view.scale) : "",
-      h(
-        "fieldset",
-        { class: "field checks" },
-        h("legend", null, "Decoders"),
-        ...s.implementations.map((i) =>
-          h(
-            "label",
-            null,
-            h("input", {
-              type: "checkbox",
-              name: "decoders",
-              value: i.id,
-              checked: view.decoders.includes(i.id),
-            }),
-            implLabel(i),
-          ),
-        ),
       ),
     );
   }
+  return listen(f);
+}
+
+/** The filters of the views that show each stream. */
+function explore(s: Summary): HTMLElement {
+  const m = machineOf(s);
+  const impls = s.implementations.map((i): Opt => [i.id, implLabel(i)]);
+  const f = h(
+    "form",
+    { class: "filters", "aria-label": "Benchmark filters" },
+    field("baseline", "Baseline decoder", impls, view.baseline),
+    field(
+      "res",
+      "Resolution",
+      [
+        ["", "All resolutions"],
+        ...resolutionsOf(s, view.depth).map((r): Opt => [r, r.replace("x", "×")]),
+      ],
+      view.res,
+    ),
+    h(
+      "div",
+      { class: "field" },
+      h("label", { for: "f-q" }, "Stream name"),
+      h("input", { id: "f-q", name: "q", type: "search", value: view.q, autocomplete: "off" }),
+    ),
+    m.threads.length > 1 ? field("scale", "Decoder for thread scaling", impls, view.scale) : "",
+    h(
+      "fieldset",
+      { class: "field checks" },
+      h("legend", null, "Decoders"),
+      ...s.implementations.map((i) =>
+        h(
+          "label",
+          null,
+          h("input", {
+            type: "checkbox",
+            name: "decoders",
+            value: i.id,
+            checked: view.decoders.includes(i.id),
+          }),
+          implLabel(i),
+        ),
+      ),
+    ),
+  );
+  const sec = section("explore", "Every result.", [
+    "Open a view to see the numbers of each stream. These filters apply to the views below.",
+  ]);
+  sec.append(listen(f));
+  return sec;
+}
+
+function listen(f: HTMLFormElement): HTMLFormElement {
   f.addEventListener("submit", (e) => e.preventDefault());
   let typing = 0;
   f.addEventListener("input", (e) => {
     clearTimeout(typing);
     // The stream search waits for a pause in typing, so a large dataset does not redraw per key.
     if ((e.target as HTMLInputElement).name === "q")
-      typing = window.setTimeout(() => onInput(f, e), 250);
-    else onInput(f, e);
+      typing = window.setTimeout(() => onInput(e), 250);
+    else onInput(e);
   });
   return f;
 }
 
-function onInput(f: HTMLFormElement, e: Event) {
+function onInput(e: Event) {
+  if (!app) return;
   const name = (e.target as HTMLInputElement).name;
-  const data = new FormData(f);
+  // The two forms hold one view together.
+  const data = new FormData();
+  for (const f of app.querySelectorAll("form")) {
+    for (const [k, v] of new FormData(f)) data.append(k, v);
+  }
   const p = new URLSearchParams();
+  if (current) p.set("open", view.open.join(","));
   for (const k of ["machine", "depth", "threads", "baseline", "res", "q", "scale"]) {
     const v = data.get(k);
     if (typeof v === "string") p.set(k, v);
@@ -564,7 +631,7 @@ function meta(s: Summary): HTMLElement {
 
 // ---------- Views ----------
 
-function views(s: Summary): HTMLElement[] {
+function views(s: Summary): { summary: HTMLElement; detail: HTMLElement[] } {
   const m = machineOf(s);
   const q = view.q.toLowerCase();
   const cases = s.cases.filter(
@@ -597,9 +664,219 @@ function views(s: Summary): HTMLElement[] {
     : !impls.length
       ? "Select at least one decoder."
       : "";
+  const aggregate = (impl: string, baseline: string, threads: number, depth: number) =>
+    s.aggregates.find(
+      (x) =>
+        x.machine_id === m.machine_id &&
+        x.threads === threads &&
+        x.bit_depth === depth &&
+        x.implementation === impl &&
+        x.baseline === baseline,
+    );
+  /** The ratios of one decoder against a baseline at the selected thread budget, by stream. */
+  const ratiosOf = (baseline: string) =>
+    new Map(
+      s.speedups
+        .filter(
+          (x) =>
+            x.machine_id === m.machine_id && x.threads === view.threads && x.baseline === baseline,
+        )
+        .map((x) => [`${x.case_id}|${x.implementation}`, x.ratio]),
+    );
+  /** Why a stream has no ratio for a pair of decoders. */
+  const why = (caseId: string, impl: string, baseline: string) =>
+    [impl, baseline]
+      .map((d) => [d, cell(caseId, d)?.status] as const)
+      .filter(([, st]) => st !== "ok")
+      .map(([d, st]) => `${label(d)}: ${st ? statusText[st] : "no result"}`)
+      .join(", ") || "no ratio in the dataset";
+
+  // Summary: the lead decoder against each other decoder. Every number is an aggregate or a
+  // speedup of the dataset; the page only compares them with 1.
+  const lead = s.implementations.find((i) => i.id === benchmarks.lead) ?? s.implementations[0];
+  const rivals = s.implementations.filter((i) => i.id !== lead.id);
+  const short = (i: Implementation) => i.name || i.id;
+  const depthCases = s.cases.filter((c) => c.bit_depth === view.depth);
+  const means = rivals.map(
+    (r) => aggregate(lead.id, r.id, view.threads, view.depth)?.geomean_ratio ?? null,
+  );
+  // The headline says "faster" only when each ratio, as the page prints it, is above 1.
+  const ahead = rivals.length > 0 && means.every((v) => v !== null && Number(v.toFixed(2)) > 1);
+  const rivalNames = names.format(rivals.map(short));
+  const summary = h(
+    "section",
+    { class: "summary", id: "view-summary", "aria-labelledby": "view-summary-h" },
+    h(
+      "h3",
+      { id: "view-summary-h" },
+      !rivals.length
+        ? `${short(lead)}.`
+        : ahead
+          ? `${short(lead)} is faster than ${rivalNames}.`
+          : `${short(lead)} against ${rivalNames}.`,
+    ),
+  );
+  if (!rivals.length) {
+    summary.append(
+      h("p", { class: "note" }, "This dataset has one decoder, so it has no comparison."),
+    );
+  } else {
+    summary.append(
+      h(
+        "p",
+        { class: "note" },
+        `Geometric mean of the throughput ratio over the ${view.depth}-bit streams that both decoders decoded correctly. ${cpuText(m)}, ${threadText(view.threads)}.`,
+      ),
+    );
+    const leadRatios = new Map(rivals.map((r) => [r.id, ratiosOf(r.id)]));
+    const ratioOf = (rival: string, caseId: string) =>
+      leadRatios.get(rival)!.get(`${caseId}|${lead.id}`);
+    const tiles = h("div", { class: "tiles" });
+    for (const r of rivals) {
+      const a = aggregate(lead.id, r.id, view.threads, view.depth);
+      const tile = h(
+        "article",
+        { class: "tile" },
+        h("p", { class: "eyebrow" }, `${short(lead)} vs ${short(r)}`),
+      );
+      if (!a) {
+        tile.append(h("p", { class: "st" }, "The dataset has no aggregate for this pair."));
+      } else if (a.geomean_ratio === null) {
+        tile.append(h("p", { class: "st" }, "No stream matched, so there is no geometric mean."));
+      } else {
+        tile.append(
+          h("p", { class: "big" }, ratio(a.geomean_ratio)),
+          h("p", { class: "claim" }, `the speed of ${short(r)}`),
+        );
+      }
+      if (a) {
+        tile.append(
+          h(
+            "p",
+            { class: "note" },
+            `${a.n_matched} of ${a.n_expected} ${view.depth}-bit streams matched.`,
+            a.excluded.length
+              ? h("a", { href: "#summary-streams" }, " See the streams without a ratio.")
+              : null,
+          ),
+        );
+      }
+      for (const d of depthsOf(s)) {
+        const other = d === view.depth ? null : aggregate(lead.id, r.id, view.threads, d);
+        if (other && other.geomean_ratio !== null) {
+          tile.append(
+            h("p", { class: "note" }, `${d}-bit streams: ${ratio(other.geomean_ratio)}.`),
+          );
+        }
+      }
+      const points = depthCases.flatMap((c) => {
+        const v = ratioOf(r.id, c.id);
+        return v === undefined ? [] : [{ name: c.name, value: v }];
+      });
+      if (points.length) {
+        tile.append(
+          spreadChart(points, seriesClass(keys, lead.id), seriesClass(keys, r.id)),
+          h(
+            "p",
+            { class: "note small" },
+            `One bar for each stream, sorted by ratio. Above the line, ${short(lead)} gives more frames/s. Below the line, ${short(r)} gives more.`,
+          ),
+        );
+      }
+      tiles.append(tile);
+    }
+    const depths = depthsOf(s);
+    const matrix = h(
+      "table",
+      null,
+      h(
+        "caption",
+        null,
+        `Geometric mean of ${label(lead.id)} against each decoder, for each bit depth and requested thread budget. ${machineLabel(m)}.`,
+      ),
+      thead(["Against", ...m.threads.map(threadText)]),
+      h(
+        "tbody",
+        null,
+        ...rivals.flatMap((r) =>
+          depths.map((d) =>
+            h(
+              "tr",
+              null,
+              h("th", { scope: "row" }, implLink(r.id), h("small", null, `${d}-bit streams`)),
+              ...m.threads.map((t) => {
+                const a = aggregate(lead.id, r.id, t, d);
+                const now = t === view.threads && d === view.depth;
+                if (!a || a.geomean_ratio === null) {
+                  return h(
+                    "td",
+                    { class: now ? "now" : undefined },
+                    h("span", { class: "st" }, a ? "No stream matched" : "No aggregate"),
+                  );
+                }
+                return h(
+                  "td",
+                  { class: now ? "num now" : "num" },
+                  ratio(a.geomean_ratio),
+                  h("small", null, `${a.n_matched} of ${a.n_expected} streams`),
+                );
+              }),
+            ),
+          ),
+        ),
+      ),
+    );
+    const streams = h(
+      "table",
+      null,
+      h("caption", null, `Throughput ratio of ${label(lead.id)} against each decoder. ${scope}.`),
+      h(
+        "thead",
+        null,
+        h(
+          "tr",
+          null,
+          h("th", { scope: "col" }, "Stream"),
+          ...rivals.map((r) => h("th", { scope: "col" }, implLink(r.id))),
+        ),
+      ),
+      h(
+        "tbody",
+        null,
+        ...depthCases.map((c) =>
+          h(
+            "tr",
+            null,
+            h("th", { scope: "row" }, c.name),
+            ...rivals.map((r) => {
+              const v = ratioOf(r.id, c.id);
+              return h(
+                "td",
+                { class: "num" },
+                v === undefined
+                  ? h("span", { class: "st" }, `Not comparable: ${why(c.id, lead.id, r.id)}`)
+                  : ratio(v),
+              );
+            }),
+          ),
+        ),
+      ),
+    );
+    summary.append(
+      tiles,
+      tableWrap("Summary table", matrix),
+      h(
+        "details",
+        { class: "prov", id: "summary-streams" },
+        h("summary", null, "The ratio of each stream, as a table"),
+        tableWrap("Stream ratio table", streams),
+      ),
+    );
+  }
+  summary.append(meta(s));
 
   // Throughput
-  const throughput = section("throughput", "Throughput", [
+  const throughput = fold("throughput", "Throughput", "Frames/s of each stream", [
     `Median frames/s of the valid repetitions. Higher is better. ${scope}.${repeats}`,
   ]);
   if (empty) throughput.append(h("p", null, empty));
@@ -702,22 +979,13 @@ function views(s: Summary): HTMLElement[] {
 
   // Speedup
   const others = impls.filter((i) => i.id !== view.baseline);
-  const speedup = section("speedup", "Speedup", [
+  const speedup = fold("speedup", "Speedup", "Ratio of each stream against a baseline", [
     `Throughput ratio against the baseline ${label(view.baseline)}. A ratio above 1 means more frames/s than the baseline. A stream has a ratio only when both decoders gave correct, measured results. ${scope}.${repeats}`,
   ]);
   if (empty || !others.length) {
     speedup.append(h("p", null, empty || "Select a decoder other than the baseline."));
   } else {
-    const ratios = new Map(
-      s.speedups
-        .filter(
-          (x) =>
-            x.machine_id === m.machine_id &&
-            x.threads === view.threads &&
-            x.baseline === view.baseline,
-        )
-        .map((x) => [`${x.case_id}|${x.implementation}`, x.ratio]),
-    );
+    const ratios = ratiosOf(view.baseline);
     const caseName = (id: string) => s.cases.find((c) => c.id === id)?.name ?? id;
     speedup.append(
       h("h4", null, `All ${view.depth}-bit streams of the suite`),
@@ -725,14 +993,7 @@ function views(s: Summary): HTMLElement[] {
         "ul",
         { class: "aggregates" },
         ...others.map((i) => {
-          const a = s.aggregates.find(
-            (x) =>
-              x.machine_id === m.machine_id &&
-              x.threads === view.threads &&
-              x.bit_depth === view.depth &&
-              x.implementation === i.id &&
-              x.baseline === view.baseline,
-          );
+          const a = aggregate(i.id, view.baseline, view.threads, view.depth);
           if (!a) return h("li", null, implLink(i.id), ": the dataset has no aggregate.");
           return h(
             "li",
@@ -761,12 +1022,6 @@ function views(s: Summary): HTMLElement[] {
       ),
       h("h4", null, "Streams that the filters show"),
     );
-    const why = (caseId: string, impl: string) =>
-      [impl, view.baseline]
-        .map((d) => [d, cell(caseId, d)?.status] as const)
-        .filter(([, st]) => st !== "ok")
-        .map(([d, st]) => `${label(d)}: ${st ? statusText[st] : "no result"}`)
-        .join(", ") || "no ratio in the dataset";
     speedup.append(
       chartBox(
         cases.map((c) => ({
@@ -779,7 +1034,7 @@ function views(s: Summary): HTMLElement[] {
                   key: i.id,
                   value: null,
                   text: "not comparable",
-                  title: `${label(i.id)}: not comparable (${why(c.id, i.id)})`,
+                  title: `${label(i.id)}: not comparable (${why(c.id, i.id, view.baseline)})`,
                 }
               : {
                   label: i.name || i.id,
@@ -822,7 +1077,7 @@ function views(s: Summary): HTMLElement[] {
                 "td",
                 { class: "num" },
                 r === undefined
-                  ? h("span", { class: "st" }, `Not comparable: ${why(c.id, i.id)}`)
+                  ? h("span", { class: "st" }, `Not comparable: ${why(c.id, i.id, view.baseline)}`)
                   : ratio(r),
               );
             }),
@@ -833,11 +1088,11 @@ function views(s: Summary): HTMLElement[] {
     speedup.append(tableWrap("Speedup table", table));
   }
 
-  const out = [throughput, speedup];
+  const out: HTMLElement[] = [throughput, speedup];
 
   // Thread scaling
   if (m.threads.length > 1) {
-    const scaling = section("scaling", "Thread scaling", [
+    const scaling = fold("scaling", "Thread scaling", "Frames/s at each thread budget", [
       `Frames/s of ${label(view.scale)} at each requested thread budget on ${machineLabel(m)}, ${view.depth}-bit streams. The requested threads are the value given to the thread option of the decoder. The factor against 1 thread comes from the dataset.`,
     ]);
     if (!cases.length) scaling.append(h("p", null, "No stream matches the filters."));
@@ -900,7 +1155,25 @@ function views(s: Summary): HTMLElement[] {
     provenance(s, m, cases),
     downloads(s),
   );
-  return out;
+  return { summary, detail: out };
+}
+
+/** A view that starts closed. Its charts are drawn when the reader opens it. */
+function fold(id: string, title: string, hint: string, notes: string[]): HTMLElement {
+  const d = h(
+    "details",
+    { class: "view fold", id: `view-${id}`, open: view.open.includes(id) },
+    h("summary", null, h("h3", { id: `view-${id}-h` }, title), h("span", { class: "hint" }, hint)),
+    ...notes.map((n) => h("p", { class: "note" }, n)),
+  );
+  d.addEventListener("toggle", () => {
+    // A view that update() draws open is already in the view state and already drawn.
+    if (!d.isConnected || d.open === view.open.includes(id)) return;
+    view = { ...view, open: folds.filter((f) => (f === id ? d.open : view.open.includes(f))) };
+    writeUrl();
+    redraw();
+  });
+  return d;
 }
 
 function section(id: string, title: string, notes: string[]): HTMLElement {
@@ -953,6 +1226,89 @@ function bar(
   return { label, value: v, text: fmt(v), title: `${label}: ${fmt(v)}` };
 }
 
+/** A chart inside closed details is not drawn. It is drawn when the reader opens the details. */
+const closed = (box: HTMLElement) => box.closest("details:not([open])") !== null;
+
+/**
+ * Decoders keep one style each: three colors, then the same colors dashed. Neighbours always
+ * differ in color; from the seventh decoder on the styles repeat, and the name beside each bar
+ * (and a note in the view text) identifies the decoder. Other series are neutral.
+ */
+function seriesClass(keys: string[], key: string | undefined): string {
+  const n = key === undefined ? -1 : keys.indexOf(key);
+  return n < 0 ? "sn" : `s${n % 3}${Math.floor(n / 3) % 2 ? " alt" : ""}`;
+}
+
+/**
+ * One bar for each stream, sorted by ratio, around the line of ratio 1. The table of stream
+ * ratios in the summary carries the same data.
+ */
+function spreadChart(
+  points: { name: string; value: number }[],
+  above: string,
+  below: string,
+): HTMLElement {
+  const box = h("div", { class: "chart spread" });
+  const sorted = [...points].sort((a, b) => a.value - b.value);
+  const draw = () => {
+    if (!box.isConnected) {
+      charts.delete(draw);
+      return;
+    }
+    const w = closed(box) ? 0 : Math.floor(box.clientWidth);
+    if (!w) return;
+    const labelW = 52;
+    const top = 10;
+    const plotH = 120;
+    const lo = Math.min(1, sorted[0].value);
+    const hi = Math.max(1, sorted[sorted.length - 1].value);
+    const y = (v: number) => top + ((hi - v) / (hi - lo || 1)) * plotH;
+    const step = Math.min(34, (w - labelW) / sorted.length);
+    const root = svg("svg", {
+      viewBox: `0 0 ${w} ${top + plotH + 10}`,
+      width: w,
+      height: top + plotH + 10,
+      "aria-hidden": "true",
+      focusable: "false",
+    });
+    sorted.forEach((p, i) => {
+      const g = svg("g", { class: `row ${p.value >= 1 ? above : below}` });
+      g.append(svg("title", {}, `${p.name}: ${ratio(p.value)}`));
+      g.append(
+        svg("rect", {
+          x: labelW + i * step,
+          y: Math.min(y(1), y(p.value)),
+          width: Math.max(1, step - (step > 4 ? 2 : 0)),
+          height: Math.max(2, Math.abs(y(p.value) - y(1))),
+          rx: 2,
+          class: "fill",
+        }),
+      );
+      root.append(g);
+    });
+    root.append(
+      svg("line", {
+        x1: labelW,
+        x2: labelW + sorted.length * step,
+        y1: y(1),
+        y2: y(1),
+        class: "ref",
+      }),
+    );
+    // The line of ratio 1, and the two ends of the range when they have room for a label.
+    for (const v of [1, hi, lo]) {
+      if (v === 1 || Math.abs(y(v) - y(1)) >= 14) {
+        root.append(
+          svg("text", { x: labelW - 8, y: y(v) + 4, class: "lbl", "text-anchor": "end" }, ratio(v)),
+        );
+      }
+    }
+    box.replaceChildren(root);
+  };
+  charts.add(draw);
+  return box;
+}
+
 /** keys: bar keys that keep one color in every chart (the decoder ids). */
 function chartBox(groups: Group[], keys: string[] = [], ref?: number): HTMLElement {
   const box = h("div", { class: "chart" });
@@ -961,7 +1317,7 @@ function chartBox(groups: Group[], keys: string[] = [], ref?: number): HTMLEleme
       charts.delete(draw);
       return;
     }
-    const w = Math.floor(box.clientWidth);
+    const w = closed(box) ? 0 : Math.floor(box.clientWidth);
     if (!w) return;
     const char = 7.2; // Approximate width of a 12 px character.
     const fit = (t: string, px: number) => {
@@ -991,14 +1347,8 @@ function chartBox(groups: Group[], keys: string[] = [], ref?: number): HTMLEleme
       label.append(svg("title", {}, g.label));
       root.append(label);
       y += 22;
-      g.bars.forEach((b, i) => {
-        // Decoders keep one style each: three colors, then the same colors dashed. Neighbours
-        // always differ in color; from the seventh decoder on the styles repeat, and the name
-        // beside each bar (and a note in the view text) identifies the decoder. Other series
-        // are neutral.
-        const n = b.key === undefined ? -1 : keys.indexOf(b.key);
-        const style = n < 0 ? "sn" : `s${n % 3}${Math.floor(n / 3) % 2 ? " alt" : ""}`;
-        const row = svg("g", { class: `row ${style}` });
+      g.bars.forEach((b) => {
+        const row = svg("g", { class: `row ${seriesClass(keys, b.key)}` });
         row.append(svg("title", {}, b.title));
         row.append(
           svg(

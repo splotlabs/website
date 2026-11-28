@@ -26,7 +26,7 @@ Do not ask the owner to make these decisions again.
 - `src/styles/global.css`: all styles and design tokens.
 - `src/scripts/enhance.ts`: browser JavaScript for all pages (copy buttons, menu close).
 - `src/scripts/benchmarks.ts` and `src/scripts/bench-data.ts`: browser JavaScript for the
-  benchmarks page only (data loading, validation, filters, SVG charts).
+  benchmarks page only (data loading, validation, summary, filters, SVG charts).
 - `public/_headers`: response headers for Workers Static Assets, including the
   Content-Security-Policy. The policy allows no inline script and no inline style. `connect-src`
   names only `'self'` and the benchmark data base (`benchmarks.dataBase` in `src/data/site.ts`).
