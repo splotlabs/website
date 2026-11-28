@@ -31,7 +31,10 @@ const MAX = {
   cells: 20_000,
   speedups: 50_000,
   aggregates: 10_000,
-  small: 64, // isa, arguments, libraries, excluded per aggregate are bounded by cases below
+  small: 64, // methodology and toolchain keys, libraries
+  // CPU feature flags: a current x86-64 CPU reports well over 100 (Linux /proc/cpuinfo).
+  isa: 1024,
+  arguments: 256, // build command arguments
 };
 export type BuildOrigin = (typeof buildOrigins)[number];
 
@@ -487,7 +490,7 @@ export function parseSummary(raw: unknown, expected: Expected): Summary {
             logical_cores: optNum(cpu, "logical_cores", cat),
             performance_cores: optNum(cpu, "performance_cores", cat),
             efficiency_cores: optNum(cpu, "efficiency_cores", cat),
-            isa: list(cpu, "isa", cat, strings, MAX.small),
+            isa: list(cpu, "isa", cat, strings, MAX.isa),
           },
           memory_bytes: optNum(fp, "memory_bytes", `${mat}.fingerprint`),
           power: setting(fp.power),
@@ -570,7 +573,7 @@ export function parseSummary(raw: unknown, expected: Expected): Summary {
         toolchain,
         configuration: {
           summary: text(c, "summary", cat),
-          arguments: list(c, "arguments", cat, strings, MAX.small),
+          arguments: list(c, "arguments", cat, strings, MAX.arguments),
           target_cpu: optText(c, "target_cpu", cat),
           simd: optStr(c, "simd", cat),
           lto: optText(c, "lto", cat),

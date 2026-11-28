@@ -685,6 +685,25 @@ for (const [name, change, message] of invalid) {
   });
 }
 
+test("a real CPU feature list loads; an absurd one is refused", async ({ page }) => {
+  // A current x86-64 CPU reports well over 100 feature flags (the first published dataset has 138).
+  const problems = watchProblems(page);
+  await withData(page);
+  await serveSummary(page, (s) => {
+    s.machines[0].fingerprint.cpu.isa = Array.from({ length: 300 }, (_, i) => `flag${i}`);
+  });
+  await page.goto(full);
+  await expect(page.locator("#view-throughput")).toBeVisible();
+  await expect(status(page)).not.toContainText("could not be loaded");
+  expect(problems).toEqual([]);
+
+  await serveSummary(page, (s) => {
+    s.machines[0].fingerprint.cpu.isa = Array.from({ length: 2000 }, (_, i) => `flag${i}`);
+  });
+  await page.goto(full);
+  await expect(status(page)).toContainText("fingerprint.cpu.isa has more than 1024 entries.");
+});
+
 test("oversized index list and oversized file are refused", async ({ page }) => {
   await withData(page);
   await serveIndex(page, (i) => {
